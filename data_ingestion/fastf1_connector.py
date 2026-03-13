@@ -27,7 +27,7 @@ class FastF1Connector:
         session = fastf1.get_session(year, round_number, session_type)
         session.load(
             laps=True,
-            telemetry=False,   # Skip telemetry for now — it's 200MB+ per session
+            telemetry=False,
             weather=True,
             messages=False
         )
