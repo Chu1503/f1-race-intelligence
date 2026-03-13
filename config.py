@@ -14,6 +14,7 @@ class Settings:
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     PINECONE_API_KEY: str = os.getenv("PINECONE_API_KEY", "")
     PINECONE_ENVIRONMENT: str = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
+    VOYAGE_API_KEY: str = os.getenv("VOYAGE_API_KEY", "")
 
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
@@ -50,7 +51,9 @@ class Settings:
         if not self.ANTHROPIC_API_KEY:
             errors.append("ANTHROPIC_API_KEY is not set")
         if not self.PINECONE_API_KEY:
-            errors.append("PINECONE_API_KEY is not set (needed for Phase 5+)")
+            errors.append("PINECONE_API_KEY is not set")
+        if not self.VOYAGE_API_KEY:
+            errors.append("VOYAGE_API_KEY is not set")
         if errors:
             for error in errors:
                 logger.warning(f"Config warning: {error}")
