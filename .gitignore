@@ -5,6 +5,7 @@ cat > .gitignore << 'EOF'
 
 # Python
 venv/
+venv_backup/
 __pycache__/
 *.pyc
 *.pyo
