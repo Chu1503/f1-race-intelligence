@@ -40,7 +40,6 @@ def generate_lap_commentary(
     position: int = None,
     strategy_recommendation: str = None,
 ) -> str:
-
     context = f"""
 Driver: {driver_name} (#{driver_number})
 Lap {lap_number}: {lap_duration:.3f}s on {tyre_compound} (age: {tyre_age_laps} laps)
