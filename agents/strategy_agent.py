@@ -46,6 +46,7 @@ def analyze_driver_situation(
     circuit_name: str = "unknown",
     total_race_laps: int = 57,
 ) -> str:
+
     rag_query = (
         f"{tyre_compound} tyres {tyre_age_laps} laps "
         f"degradation rate {tyre_degradation_rate:.4f} "

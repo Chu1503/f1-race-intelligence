@@ -70,7 +70,7 @@ def test_commentary_agent():
             should_pit_soon=True,
             tyre_degradation_rate=0.18,
             position=2,
-            strategy_recommendation="PIT NOW — switch to MEDIUM tyres"
+            strategy_recommendation="PIT NOW: switch to MEDIUM tyres"
         )
         assert isinstance(commentary, str)
         assert len(commentary) > 20
@@ -98,7 +98,7 @@ def main():
     logger.info(f"\n{passed}/3 tests passed")
 
     if passed == 3:
-        logger.success("Phase 6 complete — AI agents working!")
+        logger.success("AI agents working!")
     return passed == 3
 
 

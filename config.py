@@ -37,7 +37,8 @@ class Settings:
     STREAMLIT_PORT: int = int(os.getenv("STREAMLIT_PORT", "8501"))
 
     # LLM Model Settings
-    CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+    # CLAUDE_MODEL = "claude-sonnet-4-6"
+    CLAUDE_MODEL = "claude-haiku-4-5-20251001"
     CLAUDE_MAX_TOKENS: int = 4096
 
     # Used when replaying historical races in dev mode (no live race weekend)
