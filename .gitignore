@@ -1,0 +1,33 @@
+cat > .gitignore << 'EOF'
+# Environment
+.env
+*.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Data & Cache
+data/
+*.csv
+*.parquet
+notebooks/.ipynb_checkpoints/
+
+# Cloud Credentials
+*.json
+!package.json
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+EOF
