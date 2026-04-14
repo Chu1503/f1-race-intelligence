@@ -40,15 +40,18 @@ def add_lap_delta(df: DataFrame) -> DataFrame:
 def add_tyre_degradation_rate(df: DataFrame) -> DataFrame:
     """
     Estimate how much slower (in seconds) the driver gets per lap on this tyre set.
+    Partitions by driver + stint_number to handle repeated compounds correctly.
     """
+    # Use tyre_age_laps to define a safe divisor
     df = df.withColumn(
         "tyre_age_safe",
-        F.when(F.col("tyre_age_laps") > 0, F.col("tyre_age_laps")).otherwise(1)
+        F.when(F.col("tyre_age_laps") > 1, F.col("tyre_age_laps")).otherwise(1)
     )
 
+    # Partition by driver + stint (not compound) so repeated compounds don't merge
     stint_window = (
         Window
-        .partitionBy("driver_number", "tyre_compound")
+        .partitionBy("driver_number", "stint_number")
         .orderBy("lap_number")
     )
     df = df.withColumn(
@@ -56,10 +59,21 @@ def add_tyre_degradation_rate(df: DataFrame) -> DataFrame:
         F.first("lap_duration").over(stint_window)
     )
     df = df.withColumn(
-        "tyre_degradation_rate",
+        "tyre_degradation_rate_raw",
         (F.col("lap_duration") - F.col("stint_start_lap_time")) / F.col("tyre_age_safe")
     )
-    return df
+
+    # Clamp to a sane range — anything outside [-0.5, 1.5] is noise/SC/outlier
+    df = df.withColumn(
+        "tyre_degradation_rate",
+        F.when(
+            (F.col("tyre_degradation_rate_raw") >= -0.5) &
+            (F.col("tyre_degradation_rate_raw") <= 1.5),
+            F.col("tyre_degradation_rate_raw")
+        ).otherwise(F.lit(None).cast(FloatType()))
+    )
+
+    return df.drop("tyre_degradation_rate_raw")
 
 
 def add_stint_length(df: DataFrame) -> DataFrame:
@@ -108,12 +122,34 @@ def add_pit_window_prediction(df: DataFrame, deg_threshold: float = 0.15) -> Dat
 
 
 def compute_all_features(df: DataFrame) -> DataFrame:
-    """
-    Apply all feature engineering steps in the correct order.
-    """
     df = df.filter(F.col("lap_duration").isNotNull())
-    df = df.filter(F.col("lap_duration") > 60.0)   # under 60s = formation/SC lap
-    df = df.filter(F.col("lap_duration") < 200.0)  # over 200s = red flag/outlier
+    df = df.filter(F.col("lap_duration") > 60.0)
+    df = df.filter(F.col("lap_duration") < 200.0)
+
+    # Derive stint number from tyre_age_laps resets — new stint when age drops
+    stint_detect_window = (
+        Window
+        .partitionBy("driver_number")
+        .orderBy("lap_number")
+    )
+    df = df.withColumn(
+        "prev_tyre_age",
+        F.lag("tyre_age_laps").over(stint_detect_window)
+    )
+    df = df.withColumn(
+        "is_new_stint",
+        F.when(
+            (F.col("prev_tyre_age").isNotNull()) &
+            (F.col("tyre_age_laps") < F.col("prev_tyre_age")),
+            F.lit(1)
+        ).otherwise(F.lit(0))
+    )
+    df = df.withColumn(
+        "stint_number",
+        F.sum("is_new_stint").over(
+            stint_detect_window.rowsBetween(Window.unboundedPreceding, 0)
+        )
+    )
 
     df = add_rolling_avg_lap_time(df)
     df = add_lap_delta(df)

@@ -15,14 +15,16 @@ dist/
 build/
 
 # Data & Cache
-data/
+data/fastf1_cache/
+data/spark_checkpoints/
+data/spark_output/lap_features/
 *.csv
-*.parquet
 notebooks/.ipynb_checkpoints/
 
 # Cloud Credentials
 *.json
 !package.json
+!package-lock.json
 
 # Logs
 *.log

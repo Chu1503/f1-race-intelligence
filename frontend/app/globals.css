@@ -1,0 +1,72 @@
+@import "tailwindcss";
+/* @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,300;0,400;0,600;0,700;0,900;1,700;1,900&family=Barlow:wght@300;400;500;600&display=swap'); */
+
+:root {
+  --red: #e8002d;
+  --red-dim: #e8002d18;
+  --black: #080808;
+  --dark: #0e0e0e;
+  --card: #131313;
+  --card2: #181818;
+  --border: #222222;
+  --border2: #2e2e2e;
+  --muted: #555555;
+  --text: #ffffff;
+  --text2: #aaaaaa;
+  --gold: #f5a623;
+  --silver: #c0c0c0;
+  --bronze: #cd7f32;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--black);
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 2px,
+      rgba(255,255,255,0.012) 2px,
+      rgba(255,255,255,0.012) 4px
+    );
+  pointer-events: none;
+  z-index: 0;
+}
+
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: var(--black); }
+::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+input[type="range"] { accent-color: var(--red); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scanline {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+@keyframes flicker {
+  0%,100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.8; }
+  94% { opacity: 1; }
+}
