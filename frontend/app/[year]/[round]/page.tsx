@@ -19,7 +19,7 @@ import {
   getTeamColor,
   type CalendarRace,
   type SessionDriver,
-} from "@/lib/constants";
+} from "../../../lib/constants"
 import {
   getCalendar,
   getLaps,
@@ -34,7 +34,7 @@ import {
   getStrategy,
   getCommentary,
   type DriverInfo,
-} from "@/lib/api";
+} from "../../../lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface LapRow {

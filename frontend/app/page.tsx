@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getSeasons, getAvailableRaces } from "@/lib/api";
+import { getSeasons, getAvailableRaces } from "../lib/api";
 
 const C = {
   black: "#080808",

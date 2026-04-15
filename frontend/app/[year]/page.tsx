@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { getCalendar, getAvailableRaces, runBatchProcessor } from "@/lib/api";
-import { getFlag, type CalendarRace } from "@/lib/constants";
+import { getCalendar, getAvailableRaces, runBatchProcessor } from "../../lib/api";
+import { getFlag, type CalendarRace } from "../../lib/constants";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 
 const C = {
