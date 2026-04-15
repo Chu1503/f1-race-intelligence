@@ -15,7 +15,7 @@ dist/
 build/
 
 # Data & Cache
-data/fastf1_cache/
+
 data/spark_checkpoints/
 data/spark_output/lap_features/
 *.csv
