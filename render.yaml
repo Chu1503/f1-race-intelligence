@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: f1-intelligence-api
+    runtime: python
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: PINECONE_ENVIRONMENT
+        value: us-east-1
+      - key: FASTF1_CACHE_DIR
+        value: ./data/fastf1_cache
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: FRONTEND_URL
+        value: https://your-app.vercel.app
