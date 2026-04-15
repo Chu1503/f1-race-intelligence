@@ -19,7 +19,10 @@ app = FastAPI(title="F1 Race Intelligence API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        os.getenv("FRONTEND_URL", ""),
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -212,7 +215,6 @@ class CommentaryRequest(BaseModel):
     strategy_recommendation: Optional[str] = None
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
 def root():
@@ -481,7 +483,6 @@ def get_tyre_strategies(year: int, round_number: int):
 def get_pit_stops(year: int, round_number: int):
     """Pit stop times. Tries Jolpica first, falls back to FastF1."""
 
-    # ── Try Jolpica ──────────────────────────────────────────────────────────
     try:
         r = requests.get(
             f"https://api.jolpi.ca/ergast/f1/{year}/{round_number}/pitstops.json?limit=100",
