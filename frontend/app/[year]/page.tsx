@@ -40,7 +40,7 @@ export default function SeasonPage() {
       ([cal, avail]) => {
         setCalendar(cal?.races || []);
         const set = new Set<number>(
-          (avail.races || [])
+          (avail?.races || [])
             .filter((r: any) => r.year === year)
             .map((r: any) => r.round)
         );
@@ -57,7 +57,7 @@ export default function SeasonPage() {
     const poll = setInterval(async () => {
       const avail = await getAvailableRaces();
       const set = new Set<number>(
-        (avail.races || [])
+        (avail?.races || [])
           .filter((r: any) => r.year === year)
           .map((r: any) => r.round)
       );

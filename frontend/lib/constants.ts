@@ -82,31 +82,31 @@ export const COUNTRY_CODES: Record<string, string> = {
   Miami: "us",
 };
 
-const TEAM_LOGOS: Record<string, string> = {
-  "mclaren": "/logos/mclaren.png",
-  "ferrari": "/logos/ferrari.png",
-  "red bull": "/logos/redbull.png",
-  "mercedes": "/logos/mercedes.png",
-  "aston martin": "/logos/aston.png",
-  "alpine": "/logos/alpine.png",
-  "williams": "/logos/williams.png",
-  "racing bulls": "/logos/rb.png",
-  "rb": "/logos/rb.png",
-  "kick sauber": "/logos/sauber.png",
-  "sauber": "/logos/sauber.png",
-  "audi": "/logos/audi.png",
-  "haas": "/logos/haas.png",
-  "cadillac": "/logos/cadillac.png",
-};
+// const TEAM_LOGOS: Record<string, string> = {
+//   "mclaren": "/logos/mclaren.png",
+//   "ferrari": "/logos/ferrari.png",
+//   "red bull": "/logos/redbull.png",
+//   "mercedes": "/logos/mercedes.png",
+//   "aston martin": "/logos/aston.png",
+//   "alpine": "/logos/alpine.png",
+//   "williams": "/logos/williams.png",
+//   "racing bulls": "/logos/rb.png",
+//   "rb": "/logos/rb.png",
+//   "kick sauber": "/logos/sauber.png",
+//   "sauber": "/logos/sauber.png",
+//   "audi": "/logos/audi.png",
+//   "haas": "/logos/haas.png",
+//   "cadillac": "/logos/cadillac.png",
+// };
 
-export function getTeamLogo(teamName: string): string | null {
-  if (!teamName) return null;
-  const t = teamName.toLowerCase();
-  for (const [key, url] of Object.entries(TEAM_LOGOS)) {
-    if (t.includes(key)) return url;
-  }
-  return null;
-}
+// export function getTeamLogo(teamName: string): string | null {
+//   if (!teamName) return null;
+//   const t = teamName.toLowerCase();
+//   for (const [key, url] of Object.entries(TEAM_LOGOS)) {
+//     if (t.includes(key)) return url;
+//   }
+//   return null;
+// }
 
 export function getFlag(country: string): string {
   return COUNTRY_CODES[country] || "un";

@@ -22,11 +22,16 @@ export default function HomePage() {
   );
   const [hovered, setHovered] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     Promise.all([getSeasons(), getAvailableRaces()]).then(([s, a]) => {
-      setSeasons(s.seasons || []);
-      setAvailable(a.races || []);
+      if (!s && !a) {
+        setError(true);
+      } else {
+        setSeasons(s?.seasons || []);
+        setAvailable(a?.races || []);
+      }
       setLoading(false);
     });
   }, []);
@@ -210,6 +215,11 @@ export default function HomePage() {
               ⟳
             </span>
             Loading seasons…
+          </div>
+        ) : error ? (
+          <div style={{ color: C.muted, fontSize: 14 }}>
+            Could not reach the backend. Make sure the API is running on{" "}
+            <span style={{ color: C.text2 }}>localhost:8000</span> and refresh.
           </div>
         ) : (
           <div

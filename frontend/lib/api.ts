@@ -5,21 +5,20 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 async function fetchWithRetry(
   url: string,
   options?: RequestInit,
-  attempts = 3
+  attempts = 2
 ): Promise<Response> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15_000); // 15 s timeout
+      const timer = setTimeout(() => controller.abort(), 8_000); // 8 s timeout
       const res = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timer);
       return res;
     } catch (err) {
       lastError = err;
       if (i < attempts - 1) {
-        // 500 ms → 1 s → 2 s
-        await new Promise(r => setTimeout(r, 500 * Math.pow(2, i)));
+        await new Promise(r => setTimeout(r, 500));
       }
     }
   }

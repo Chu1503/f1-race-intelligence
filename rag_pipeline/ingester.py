@@ -25,6 +25,16 @@ def lap_to_document(row: pd.Series, year: int, round_number: int) -> str:
         f"Strategy assessment: {pit_flag}."
     )
 
+def clean(val, default=0):
+    try:
+        if val is None:
+            return default
+        import math
+        if isinstance(val, float) and math.isnan(val):
+            return default
+        return val
+    except Exception:
+        return default
 
 def ingest_historical_session(
     parquet_path: str,
@@ -54,14 +64,14 @@ def ingest_historical_session(
                 "year": year,
                 "round_number": round_number,
                 "circuit": circuit_name,
-                "driver_number": int(row["driver_number"]),
-                "lap_number": int(row["lap_number"]),
-                "lap_duration": float(row.get("lap_duration", 0)),
+                "driver_number": int(clean(row.get("driver_number"), 0)),
+                "lap_number": int(clean(row.get("lap_number"), 0)),
+                "lap_duration": float(clean(row.get("lap_duration"), 0)),
                 "tyre_compound": str(row.get("tyre_compound", "unknown")),
-                "tyre_age_laps": int(row.get("tyre_age_laps", 0)),
-                "tyre_degradation_rate": float(row.get("tyre_degradation_rate", 0)),
+                "tyre_age_laps": int(clean(row.get("tyre_age_laps"), 0)),
+                "tyre_degradation_rate": float(clean(row.get("tyre_degradation_rate"), 0)),
                 "should_pit_soon": bool(row.get("should_pit_soon", False)),
-                "stint_length": int(row.get("stint_length", 0)),
+                "stint_length": int(clean(row.get("stint_length"), 0)),
                 "document": documents[i]
             }
         })
