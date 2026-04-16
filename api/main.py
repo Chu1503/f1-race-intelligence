@@ -61,6 +61,7 @@ def team_color(team_name: str) -> str:
 _driver_cache: dict = {}
 _calendar_cache: dict = {}
 _results_cache: dict = {}
+_laps_cache: dict = {}   # (year, round) -> list[dict]
 
 _DISK_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "jolpica_cache")
 os.makedirs(_DISK_CACHE_DIR, exist_ok=True)
@@ -292,13 +293,18 @@ def get_available_races():
 
 @app.get("/race/{year}/{round_number}/laps")
 def get_all_laps(year: int, round_number: int):
+    key = (year, round_number)
+    if key in _laps_cache:
+        return _laps_cache[key]
     try:
         path = f"data/spark_output/historical/{year}_round{round_number}"
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="No data found. Run batch processor first.")
         df = pd.read_parquet(path)
         df = df.replace({float("nan"): None, float("inf"): None, float("-inf"): None})
-        return df.to_dict(orient="records")
+        records = df.to_dict(orient="records")
+        _laps_cache[key] = records
+        return records
     except HTTPException:
         raise
     except Exception as e:
