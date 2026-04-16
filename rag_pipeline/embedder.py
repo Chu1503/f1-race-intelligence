@@ -15,7 +15,7 @@ def _call_voyage(texts: list[str]) -> list[list[float]]:
         "Content-Type": "application/json",
     }
     payload = {"input": texts, "model": VOYAGE_MODEL}
-    r = requests.post(VOYAGE_URL, json=payload, headers=headers, timeout=30)
+    r = requests.post(VOYAGE_URL, json=payload, headers=headers, timeout=4)
     r.raise_for_status()
     data = r.json()
     # Sort by index to preserve order
