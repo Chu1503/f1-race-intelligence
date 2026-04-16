@@ -63,14 +63,16 @@ def add_tyre_degradation_rate(df: DataFrame) -> DataFrame:
         (F.col("lap_duration") - F.col("stint_start_lap_time")) / F.col("tyre_age_safe")
     )
 
-    # Clamp to a sane range — anything outside [-0.5, 1.5] is noise/SC/outlier
+    # Clamp to a sane range — SC/VSC/outlier laps fall back to 0.0 (not NULL)
+    # Negative outliers: driver pushing harder than stint start (not real degradation)
+    # Positive outliers: SC/VSC lap, anomaly — not real degradation either
     df = df.withColumn(
         "tyre_degradation_rate",
         F.when(
             (F.col("tyre_degradation_rate_raw") >= -0.5) &
             (F.col("tyre_degradation_rate_raw") <= 1.5),
             F.col("tyre_degradation_rate_raw")
-        ).otherwise(F.lit(None).cast(FloatType()))
+        ).otherwise(F.lit(0.0).cast(FloatType()))
     )
 
     return df.drop("tyre_degradation_rate_raw")

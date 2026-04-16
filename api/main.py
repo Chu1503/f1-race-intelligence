@@ -245,7 +245,7 @@ class CommentaryRequest(BaseModel):
     tyre_compound: str
     tyre_age_laps: int
     should_pit_soon: bool
-    tyre_degradation_rate: float
+    tyre_degradation_rate: Optional[float] = 0.0
     position: Optional[int] = None
     strategy_recommendation: Optional[str] = None
 

@@ -1430,26 +1430,28 @@ export default function RacePage() {
     if (!laps) return;
     setCommLoading(true);
     setCommResult("");
-    const row = laps.find(
-      (l) => l.driver_number === stratDriver && l.lap_number === stratLap
-    );
-    if (!row) {
+    try {
+      const row = laps.find(
+        (l) => l.driver_number === stratDriver && l.lap_number === stratLap
+      );
+      if (!row) return;
+      const sd = sdByNum[row.driver_number];
+      const r = await getCommentary({
+        driver_name: sd?.full_name || `Driver ${row.driver_number}`,
+        driver_number: row.driver_number,
+        lap_number: row.lap_number,
+        lap_duration: row.lap_duration,
+        tyre_compound: row.tyre_compound || "UNKNOWN",
+        tyre_age_laps: row.tyre_age_laps || 0,
+        should_pit_soon: row.should_pit_soon,
+        tyre_degradation_rate: row.tyre_degradation_rate,
+      });
+      setCommResult(r?.commentary || "");
+    } catch {
+      setCommResult("");
+    } finally {
       setCommLoading(false);
-      return;
     }
-    const sd = sdByNum[row.driver_number];
-    const r = await getCommentary({
-      driver_name: sd?.full_name || `Driver ${row.driver_number}`,
-      driver_number: row.driver_number,
-      lap_number: row.lap_number,
-      lap_duration: row.lap_duration,
-      tyre_compound: row.tyre_compound || "UNKNOWN",
-      tyre_age_laps: row.tyre_age_laps || 0,
-      should_pit_soon: row.should_pit_soon,
-      tyre_degradation_rate: row.tyre_degradation_rate,
-    });
-    setCommResult(r.commentary || "");
-    setCommLoading(false);
   };
 
   const allNums = laps
@@ -1477,8 +1479,8 @@ export default function RacePage() {
         const key = sd?.code || `D${l.driver_number}`;
         map[l.lap_number][key] = l.lap_duration > 0 ? l.lap_duration : null;
         map[l.lap_number][`${key}_deg`] =
-          l.tyre_degradation_rate > 0 && l.tyre_degradation_rate < 0.8
-            ? l.tyre_degradation_rate
+          l.tyre_degradation_rate != null
+            ? Math.max(0, l.tyre_degradation_rate)
             : null;
       });
     return Object.values(map).sort((a: any, b: any) => a.lap - b.lap);
@@ -2198,8 +2200,8 @@ export default function RacePage() {
                       <YAxis
                         stroke={C.muted}
                         tick={{ fill: C.muted, fontSize: 11 }}
-                        domain={[0, 0.6]}
-                        allowDataOverflow={true}
+                        domain={[0, "auto"]}
+                        allowDataOverflow={false}
                         label={{
                           value: "DEG (s/lap)",
                           fill: C.muted,
@@ -3281,7 +3283,7 @@ export default function RacePage() {
                     loading={commLoading}
                     accent={accent}
                   >
-                    🎙 GENERATE COMMENTARY
+                    GENERATE COMMENTARY
                   </ActionBtn>
                 </div>
                 <div style={card}>
@@ -3291,7 +3293,40 @@ export default function RacePage() {
                   >
                     Live Commentary
                   </SectionTitle>
-                  {commResult ? (
+                  {commLoading ? (
+                    <div
+                      style={{
+                        height: 200,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: C.muted,
+                        gap: 14,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          border: `3px solid ${C.border2}`,
+                          borderTop: `3px solid ${accent}`,
+                          borderRadius: "50%",
+                          animation: "spin 0.9s linear infinite",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontFamily: "'Barlow Condensed',sans-serif",
+                          fontSize: 12,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Generating...
+                      </span>
+                    </div>
+                  ) : commResult ? (
                     <div>
                       <div
                         style={{
@@ -3361,22 +3396,20 @@ export default function RacePage() {
                       style={{
                         height: 200,
                         display: "flex",
-                        flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
                         color: C.muted,
-                        gap: 12,
                       }}
                     >
-                      <span style={{ fontSize: 56 }}>🎙</span>
                       <span
                         style={{
                           fontFamily: "'Barlow Condensed',sans-serif",
-                          fontSize: 13,
-                          letterSpacing: "0.1em",
+                          fontSize: 12,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
                         }}
                       >
-                        SELECT DRIVER AND LAP, THEN GENERATE COMMENTARY
+                        Select a driver and lap, then click the button
                       </span>
                     </div>
                   )}

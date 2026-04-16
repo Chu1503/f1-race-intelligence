@@ -36,26 +36,35 @@ def generate_lap_commentary(
     tyre_compound: str,
     tyre_age_laps: int,
     should_pit_soon: bool,
-    tyre_degradation_rate: float,
+    tyre_degradation_rate: float = None,
     position: int = None,
     strategy_recommendation: str = None,
 ) -> str:
+    deg_rate = tyre_degradation_rate or 0.0
+    deg_note = (
+        f"{deg_rate:.4f}s/lap" if deg_rate > 0.01
+        else "minimal, tyres still feeling strong"
+    )
+    pit_note = "box box box — pit window open" if should_pit_soon else "stay out, tyres OK"
+
     context = f"""
 Driver: {driver_name} (#{driver_number})
-Lap {lap_number}: {lap_duration:.3f}s on {tyre_compound} (age: {tyre_age_laps} laps)
+Lap {lap_number} — lap time {lap_duration:.3f}s
+Compound: {tyre_compound}, {tyre_age_laps} laps old
+Tyre degradation: {deg_note}
+Pit call: {pit_note}
 Position: {position if position else 'unknown'}
-Tyre degradation: {tyre_degradation_rate:.4f}s/lap
-Pit flag: {'⚠️ NEEDS TO PIT SOON' if should_pit_soon else 'tyres OK'}
-Strategy note: {strategy_recommendation[:100] if strategy_recommendation else 'none'}
 """
 
     task = Task(
         description=(
-            f"Generate 2-3 sentences of exciting live F1 race commentary for this moment:\n{context}\n"
-            "Be specific about the data. Make it feel live and urgent if pitting soon."
+            f"You're commentating live on this F1 moment:\n{context}\n"
+            "Write 2-3 sentences of natural, human commentary. "
+            "Sound like a real TV commentator — specific, energetic, grounded in the data. "
+            "No bullet points, no bold text, no em dashes, no corporate phrases."
         ),
         agent=commentary_agent,
-        expected_output="2-3 sentences of live F1 race commentary."
+        expected_output="2-3 sentences of live, natural F1 race commentary. Plain prose only."
     )
 
     crew = Crew(agents=[commentary_agent], tasks=[task], verbose=False)
