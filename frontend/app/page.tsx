@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getSeasons, getAvailableRaces } from "../lib/api";
+import { getSeasons, getAvailableRaces, pingHealth } from "../lib/api";
 
 const C = {
   black: "#080808",
@@ -23,6 +23,8 @@ export default function HomePage() {
   const [hovered, setHovered] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [waking, setWaking] = useState(false);
+  const [wakeMsg, setWakeMsg] = useState("");
 
   useEffect(() => {
     Promise.all([getSeasons(), getAvailableRaces()]).then(([s, a]) => {
@@ -35,6 +37,33 @@ export default function HomePage() {
       setLoading(false);
     });
   }, []);
+
+  const handleWakeUp = async () => {
+    setWaking(true);
+    setWakeMsg("Sending wake-up ping…");
+    let alive = false;
+    for (let i = 0; i < 14; i++) {
+      alive = await pingHealth();
+      if (alive) break;
+      setWakeMsg(`Server is starting up… (${(i + 1) * 5}s)`);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    if (!alive) {
+      setWakeMsg("Server didn't respond after 70s. Try refreshing.");
+      setWaking(false);
+      return;
+    }
+    setWakeMsg("Server is up! Loading data…");
+    const [s, a] = await Promise.all([getSeasons(), getAvailableRaces()]);
+    if (s || a) {
+      setSeasons(s?.seasons || []);
+      setAvailable(a?.races || []);
+      setError(false);
+    } else {
+      setWakeMsg("Server responded but data failed. Try refreshing.");
+    }
+    setWaking(false);
+  };
 
   const racesForYear = (y: number) =>
     available.filter((r) => r.year === y).length;
@@ -217,9 +246,82 @@ export default function HomePage() {
             Loading seasons…
           </div>
         ) : error ? (
-          <div style={{ color: C.muted, fontSize: 14 }}>
-            Could not reach the backend. Make sure the API is running on{" "}
-            <span style={{ color: C.text2 }}>localhost:8000</span> and refresh.
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 4,
+              padding: "32px 28px",
+              maxWidth: 480,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 3,
+                background: C.red,
+                marginBottom: 16,
+                borderRadius: 1,
+              }}
+            />
+            <div
+              style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontWeight: 900,
+                fontStyle: "italic",
+                fontSize: 22,
+                textTransform: "uppercase",
+                letterSpacing: "0.02em",
+                marginBottom: 8,
+              }}
+            >
+              Backend is sleeping
+            </div>
+            <p style={{ color: C.text2, fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
+              The API server spins down after inactivity (Render free tier).
+              Click below to wake it up — takes about 30 seconds.
+            </p>
+            {wakeMsg && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: C.muted,
+                  marginBottom: 16,
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                {wakeMsg}
+              </div>
+            )}
+            <button
+              onClick={handleWakeUp}
+              disabled={waking}
+              style={{
+                background: waking ? "transparent" : C.red,
+                border: `1px solid ${C.red}`,
+                color: "#fff",
+                padding: "10px 24px",
+                borderRadius: 3,
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontWeight: 700,
+                fontSize: 13,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                cursor: waking ? "not-allowed" : "pointer",
+                opacity: waking ? 0.6 : 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              {waking && (
+                <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>
+                  ⟳
+                </span>
+              )}
+              {waking ? "Waking up…" : "Wake up server"}
+            </button>
           </div>
         ) : (
           <div

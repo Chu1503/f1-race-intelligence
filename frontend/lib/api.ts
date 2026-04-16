@@ -28,6 +28,13 @@ async function fetchWithRetry(
 
 // ── API functions ──────────────────────────────────────────────────────────
 
+export async function pingHealth(): Promise<boolean> {
+  try {
+    const res = await fetchWithRetry(`${API}/health`, undefined, 1, 10_000);
+    return res.ok;
+  } catch { return false; }
+}
+
 export async function getAvailableRaces() {
   try {
     const res = await fetchWithRetry(`${API}/available-races`);
