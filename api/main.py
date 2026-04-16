@@ -186,7 +186,7 @@ def fetch_results_from_jolpica(year: int, round_number: int) -> list:
             constructor = res["Constructor"]
             status = res.get("status", "Unknown")
             results.append({
-                "driver_number": int(driver.get("permanentNumber", 0)),
+                "driver_number": int(res.get("number", driver.get("permanentNumber", 0))),
                 "abbreviation": driver.get("code", "???"),
                 "full_name": f"{driver['givenName']} {driver['familyName']}",
                 "team": constructor["name"],
@@ -413,8 +413,9 @@ def get_race_incidents(year: int, round_number: int):
 
 @app.get("/race/{year}/{round_number}/lap-positions")
 def get_lap_positions(year: int, round_number: int):
-    """Driver position on every lap for the lap chart.
-    Returns driver_number (from FastF1, correct for this session) and 3-letter code."""
+    """Driver position on every lap. Uses FastF1 if cache available, else derives
+    approximate positions from cumulative lap times in parquet."""
+    # ── Try FastF1 first (exact telemetry positions) ──────────────────────────
     try:
         session = _get_fastf1_session(year, round_number)
         laps = session.laps[["Driver", "DriverNumber", "LapNumber", "Position"]].copy()
@@ -422,9 +423,43 @@ def get_lap_positions(year: int, round_number: int):
         laps["LapNumber"] = laps["LapNumber"].astype(int)
         laps["Position"] = laps["Position"].astype(int)
         laps["DriverNumber"] = laps["DriverNumber"].astype(int)
-        return laps.to_dict(orient="records")
+        result = laps.to_dict(orient="records")
+        if result:
+            return result
+    except Exception:
+        pass
+
+    # ── Fallback: derive from cumulative lap times in parquet ─────────────────
+    try:
+        path = f"data/spark_output/historical/{year}_round{round_number}"
+        if not os.path.exists(path):
+            return []
+
+        df = pd.read_parquet(path)
+        df = df[["driver_number", "lap_number", "lap_duration"]].copy()
+        df = df[df["lap_duration"] > 0].sort_values(["driver_number", "lap_number"])
+
+        # Get driver_number → abbreviation map from Jolpica
+        results = fetch_results_from_jolpica(year, round_number)
+        num_to_code = {r["driver_number"]: r["abbreviation"] for r in results}
+
+        # Compute cumulative race time per driver (approximation — excludes pit stop time)
+        df["cum_time"] = df.groupby("driver_number")["lap_duration"].cumsum()
+
+        positions = []
+        for lap_num in sorted(df["lap_number"].unique()):
+            lap_data = df[df["lap_number"] == lap_num].sort_values("cum_time")
+            for pos, (_, row) in enumerate(lap_data.iterrows(), 1):
+                dnum = int(row["driver_number"])
+                positions.append({
+                    "Driver": num_to_code.get(dnum, str(dnum)),
+                    "DriverNumber": dnum,
+                    "LapNumber": int(lap_num),
+                    "Position": pos,
+                })
+        return positions
     except Exception as e:
-        logger.warning(f"lap-positions error: {e}")
+        logger.warning(f"lap-positions fallback error: {e}")
         return []
 
 
