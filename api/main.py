@@ -226,11 +226,11 @@ class DriverSituation(BaseModel):
     lap_duration: float
     tyre_compound: str
     tyre_age_laps: int
-    tyre_degradation_rate: float
-    rolling_avg_lap_time: float
-    lap_delta: float
+    tyre_degradation_rate: Optional[float] = 0.0
+    rolling_avg_lap_time: Optional[float] = None
+    lap_delta: Optional[float] = None
     should_pit_soon: bool
-    estimated_laps_to_pit: float
+    estimated_laps_to_pit: Optional[float] = 999.0
     position: Optional[int] = None
     gap_to_leader: Optional[float] = None
     circuit_name: str = "unknown"

@@ -1395,33 +1395,36 @@ export default function RacePage() {
     if (!laps) return;
     setStratLoading(true);
     setStratResult("");
-    const row = laps.find(
-      (l) => l.driver_number === stratDriver && l.lap_number === stratLap
-    );
-    if (!row) {
-      setStratResult("No data for this lap.");
+    try {
+      const row = laps.find(
+        (l) => l.driver_number === stratDriver && l.lap_number === stratLap
+      );
+      if (!row) {
+        setStratResult("No data for this lap.");
+        return;
+      }
+      const circuitName =
+        calendar.find((c) => c.round === round)?.name || "Unknown";
+      const r = await getStrategy({
+        driver_number: row.driver_number,
+        lap_number: row.lap_number,
+        lap_duration: row.lap_duration,
+        tyre_compound: row.tyre_compound || "UNKNOWN",
+        tyre_age_laps: row.tyre_age_laps || 0,
+        tyre_degradation_rate: row.tyre_degradation_rate,
+        rolling_avg_lap_time: row.rolling_avg_lap_time,
+        lap_delta: row.lap_delta,
+        should_pit_soon: row.should_pit_soon,
+        estimated_laps_to_pit: row.estimated_laps_to_pit,
+        circuit_name: circuitName,
+        total_race_laps: Math.max(...laps.map((l) => l.lap_number)),
+      });
+      setStratResult(r?.recommendation || r?.detail || "Something went wrong. Try again.");
+    } catch {
+      setStratResult("Something went wrong. Try again.");
+    } finally {
       setStratLoading(false);
-      return;
     }
-    const circuitName =
-      calendar.find((c) => c.round === round)?.name || "Unknown";
-    const r = await getStrategy({
-      driver_number: row.driver_number,
-      lap_number: row.lap_number,
-      lap_duration: row.lap_duration,
-      tyre_compound: row.tyre_compound || "UNKNOWN",
-      tyre_age_laps: row.tyre_age_laps || 0,
-      tyre_degradation_rate: row.tyre_degradation_rate,
-      rolling_avg_lap_time: row.rolling_avg_lap_time,
-      lap_delta: row.lap_delta,
-      should_pit_soon: row.should_pit_soon,
-      estimated_laps_to_pit: row.estimated_laps_to_pit,
-      circuit_name: circuitName,
-      total_race_laps: Math.max(...laps.map((l) => l.lap_number)),
-    });
-    // setStratResult(r.recommendation || r.detail || "No response");
-    setStratResult(r?.recommendation || r?.detail || "No response");
-    setStratLoading(false);
   };
   const handleCommentary = async () => {
     if (!laps) return;
@@ -3123,7 +3126,40 @@ export default function RacePage() {
                   >
                     Strategy Recommendation
                   </SectionTitle>
-                  {stratResult ? (
+                  {stratLoading ? (
+                    <div
+                      style={{
+                        height: 320,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: C.muted,
+                        gap: 14,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          border: `3px solid ${C.border2}`,
+                          borderTop: `3px solid ${accent}`,
+                          borderRadius: "50%",
+                          animation: "spin 0.9s linear infinite",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontFamily: "'Barlow Condensed',sans-serif",
+                          fontSize: 12,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Analysing...
+                      </span>
+                    </div>
+                  ) : stratResult ? (
                     <div
                       style={{
                         background: C.dark,
@@ -3149,18 +3185,18 @@ export default function RacePage() {
                         alignItems: "center",
                         justifyContent: "center",
                         color: C.muted,
-                        gap: 12,
+                        gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 56 }}>🤖</span>
                       <span
                         style={{
                           fontFamily: "'Barlow Condensed',sans-serif",
-                          fontSize: 13,
-                          letterSpacing: "0.1em",
+                          fontSize: 12,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
                         }}
                       >
-                        SELECT DRIVER AND LAP, THEN CLICK THE BUTTON
+                        Select a driver and lap, then click the button
                       </span>
                     </div>
                   )}

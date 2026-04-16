@@ -36,57 +36,60 @@ def analyze_driver_situation(
     lap_duration: float,
     tyre_compound: str,
     tyre_age_laps: int,
-    tyre_degradation_rate: float,
-    rolling_avg_lap_time: float,
-    lap_delta: float,
-    should_pit_soon: bool,
-    estimated_laps_to_pit: float,
+    tyre_degradation_rate: float = None,
+    rolling_avg_lap_time: float = None,
+    lap_delta: float = None,
+    should_pit_soon: bool = False,
+    estimated_laps_to_pit: float = None,
     position: int = None,
     gap_to_leader: float = None,
     circuit_name: str = "unknown",
     total_race_laps: int = 57,
 ) -> str:
 
+    deg_rate = tyre_degradation_rate or 0.0
+    rolling_avg = rolling_avg_lap_time or lap_duration
+    delta = lap_delta or 0.0
+    laps_to_pit = estimated_laps_to_pit if estimated_laps_to_pit is not None else 999.0
+
     rag_query = (
         f"{tyre_compound} tyres {tyre_age_laps} laps "
-        f"degradation rate {tyre_degradation_rate:.4f} "
+        f"degradation rate {deg_rate:.4f} "
         f"circuit {circuit_name} lap {lap_number}"
     )
     historical_context = get_rag_context(rag_query, top_k=3)
 
+    pit_model_note = (
+        f"pit flag active, ~{round(laps_to_pit, 1)} laps window"
+        if should_pit_soon
+        else f"no pit flag, tyres look ok for now"
+        if laps_to_pit >= 999
+        else f"no pit flag, estimated {round(laps_to_pit, 1)} laps left on this set"
+    )
+
     task_description = f"""
-Analyze the current race situation for Driver #{driver_number} and provide a pit stop strategy recommendation.
+You're a race strategist analyzing lap {lap_number} of {total_race_laps} for driver #{driver_number} at {circuit_name}.
 
-CURRENT SITUATION:
-- Lap: {lap_number} of {total_race_laps}
-- Current lap time: {lap_duration:.3f}s
-- Rolling avg (last 5 laps): {rolling_avg_lap_time:.3f}s
-- Delta to personal best: +{lap_delta:.3f}s
-- Tyre compound: {tyre_compound}
-- Tyre age: {tyre_age_laps} laps
-- Degradation rate: {tyre_degradation_rate:.4f}s/lap
-- Should pit soon (model): {should_pit_soon}
-- Estimated laps to pit: {estimated_laps_to_pit:.1f}
-- Current position: {position if position else 'unknown'}
-- Gap to leader: {f'{gap_to_leader:.3f}s' if gap_to_leader else 'unknown'}
-- Circuit: {circuit_name}
+Data:
+- Lap time: {lap_duration:.3f}s, rolling avg: {rolling_avg:.3f}s, delta to best: +{delta:.3f}s
+- Tyres: {tyre_compound}, {tyre_age_laps} laps old, degrading at {deg_rate:.4f}s/lap
+- Pit model: {pit_model_note}
+- Position: {position if position else "unknown"}, gap to leader: {f"{gap_to_leader:.3f}s" if gap_to_leader else "unknown"}
+- Laps remaining: {total_race_laps - lap_number}
 
-HISTORICAL CONTEXT:
+Historical context:
 {historical_context}
 
-Provide:
-1. PIT NOW / STAY OUT / PIT NEXT LAP recommendation
-2. Recommended next tyre compound
-3. Key reasoning (2-3 sentences)
-4. Risk assessment (LOW/MEDIUM/HIGH)
+Write a short strategy take. 3-4 sentences max. No bullet points, no headers, no numbered lists, no bold text, no em dashes.
+Give a clear call: pit now, stay out, or pit next lap. Say what tyre to go on next and why. Be direct and honest, including when the data looks fine and staying out is the right move. Write like you're talking to the driver's engineer, not filing a report.
 """
 
     task = Task(
         description=task_description,
         agent=strategy_agent,
         expected_output=(
-            "A clear strategy recommendation with: decision (PIT NOW/STAY OUT/PIT NEXT LAP), "
-            "next tyre compound, reasoning, and risk level."
+            "3-4 sentences of plain prose. A clear pit/stay out call, the recommended next compound, and honest reasoning. "
+            "No markdown, no headers, no bullet points, no bold, no em dashes."
         )
     )
 
