@@ -1,4 +1,3 @@
-cat > .gitignore << 'EOF'
 # Environment
 .env
 *.env
@@ -14,17 +13,18 @@ __pycache__/
 dist/
 build/
 
-# Data & Cache
-
+# Data — large caches, never commit these
 data/spark_checkpoints/
 data/spark_output/lap_features/
-*.csv
+data/fastf1_cache/
 notebooks/.ipynb_checkpoints/
+*.csv
 
-# Cloud Credentials
+# Credentials / secrets
 *.json
 !package.json
 !package-lock.json
+!data/jolpica_cache/*.json
 
 # Logs
 *.log
@@ -33,4 +33,3 @@ logs/
 # IDE
 .vscode/
 .idea/
-EOF
