@@ -9,7 +9,8 @@ from config import settings
 llm = ChatAnthropic(
     model=settings.CLAUDE_MODEL,
     api_key=settings.ANTHROPIC_API_KEY,
-    max_tokens=settings.CLAUDE_MAX_TOKENS
+    max_tokens=settings.CLAUDE_MAX_TOKENS,
+    timeout=60,
 )
 
 strategy_agent = Agent(

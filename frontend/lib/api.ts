@@ -141,7 +141,7 @@ export async function getStrategy(payload: object) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }, 1, 60_000); // 1 attempt, 60s timeout — LLM calls are slow
+    }, 1, 90_000); // 1 attempt, 90s timeout — LLM + cold start on Render
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }
@@ -153,7 +153,7 @@ export async function getCommentary(payload: object) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }, 1, 60_000); // 1 attempt, 60s timeout — LLM calls are slow
+    }, 1, 90_000); // 1 attempt, 90s timeout — LLM + cold start on Render
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }
