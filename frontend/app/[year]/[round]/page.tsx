@@ -1296,7 +1296,21 @@ export default function RacePage() {
     const resultByCode: Record<string, RaceResult> = {};
     for (const r of raceResults) resultByCode[r.abbreviation] = r;
 
-    // Collect pairs from FastF1 — these driver_numbers are the real car numbers
+    // Seed from Jolpica race results first — always available, no FastF1 needed
+    for (const r of raceResults) {
+      if (r.driver_number) {
+        map[r.driver_number] = {
+          race_number: r.driver_number,
+          code: r.abbreviation,
+          full_name: r.full_name,
+          team: r.team,
+          color: getTeamColor(r.team),
+        };
+      }
+    }
+
+    // Supplement/override with FastF1 sources (lap positions, tyre strategies)
+    // These have the correct car numbers for the session and may differ for subs
     const pairs: { num: number; code: string }[] = [];
     for (const f of fl)
       pairs.push({ num: f.driver_number, code: f.driver_code });
@@ -1308,14 +1322,13 @@ export default function RacePage() {
         pairs.push({ num: t.driver_number, code: t.driver_code });
 
     for (const { num, code } of pairs) {
-      // Match by 3-letter code to Jolpica result — gets correct name and team
       const fromResult = resultByCode[code];
       map[num] = {
         race_number: num,
         code,
-        full_name: fromResult?.full_name || jolpica[code]?.full_name || code,
-        team: fromResult?.team || jolpica[code]?.team || "",
-        color: getTeamColor(fromResult?.team || jolpica[code]?.team || ""),
+        full_name: fromResult?.full_name || jolpica[code]?.full_name || map[num]?.full_name || code,
+        team: fromResult?.team || jolpica[code]?.team || map[num]?.team || "",
+        color: getTeamColor(fromResult?.team || jolpica[code]?.team || map[num]?.team || ""),
       };
     }
 
