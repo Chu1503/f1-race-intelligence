@@ -58,7 +58,10 @@ def analyze_driver_situation(
         f"degradation rate {deg_rate:.4f} "
         f"circuit {circuit_name} lap {lap_number}"
     )
-    historical_context = get_rag_context(rag_query, top_k=3)
+    try:
+        historical_context = get_rag_context(rag_query, top_k=3)
+    except Exception:
+        historical_context = "No historical context available."
 
     pit_model_note = (
         f"pit flag active, ~{round(laps_to_pit, 1)} laps window"
