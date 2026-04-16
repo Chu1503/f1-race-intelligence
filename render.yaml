@@ -21,3 +21,7 @@ services:
         value: INFO
       - key: FRONTEND_URL
         value: https://f1-race-intelligence.vercel.app
+      - key: OTEL_SDK_DISABLED
+        value: "true"
+      - key: CREWAI_TELEMETRY_OPT_OUT
+        value: "true"
