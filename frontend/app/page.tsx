@@ -279,7 +279,7 @@ export default function HomePage() {
             </div>
             <p style={{ color: C.text2, fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
               The API server spins down after inactivity (Render free tier).
-              Click below to wake it up — takes about 30 seconds.
+              Click below to wake it up.
             </p>
             {wakeMsg && (
               <div
