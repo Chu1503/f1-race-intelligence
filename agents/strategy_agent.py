@@ -2,13 +2,12 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from crewai import Agent, Task, Crew
-from langchain_anthropic import ChatAnthropic
+from crewai import Agent, Task, Crew, LLM
 from config import settings
 
 # ── Initialized once at module load — not per request ─────────────────────
-llm = ChatAnthropic(
-    model=settings.CLAUDE_MODEL,
+llm = LLM(
+    model=f"anthropic/{settings.CLAUDE_MODEL}",
     api_key=settings.ANTHROPIC_API_KEY,
     max_tokens=256,
     timeout=60,
@@ -110,4 +109,5 @@ Give a clear call: pit now, stay out, or pit next lap. Say what tyre to go on ne
     )
 
     crew = Crew(agents=[strategy_agent], tasks=[task], verbose=False)
-    return str(crew.kickoff())
+    result = crew.kickoff()
+    return result.raw if hasattr(result, "raw") else str(result)
