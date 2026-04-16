@@ -1,12 +1,13 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from crewai import Agent, Task, Crew, LLM
+from crewai import Agent, Task, Crew
+from langchain_anthropic import ChatAnthropic
 from config import settings
 
 # ── Initialized once at module load — not per request ─────────────────────
-llm = LLM(
-    model=f"anthropic/{settings.CLAUDE_MODEL}",
+llm = ChatAnthropic(
+    model=settings.CLAUDE_MODEL,
     api_key=settings.ANTHROPIC_API_KEY,
     max_tokens=200,
     timeout=60,
@@ -72,5 +73,4 @@ Write 2-3 sentences of natural, human commentary. Sound like a real TV commentat
     )
 
     crew = Crew(agents=[commentary_agent], tasks=[task], verbose=False)
-    result = crew.kickoff()
-    return result.raw if hasattr(result, "raw") else str(result)
+    return str(crew.kickoff())
