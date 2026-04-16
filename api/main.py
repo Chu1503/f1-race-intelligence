@@ -256,17 +256,6 @@ class CommentaryRequest(BaseModel):
 
 
 
-@app.on_event("startup")
-def _prewarm_agents():
-    """Import agents at startup so the first real request doesn't pay the cold-start cost."""
-    try:
-        import agents.strategy_agent  # noqa: F401  — triggers module-level LLM + Agent init
-        import agents.commentary_agent  # noqa: F401
-        logger.info("Agents pre-warmed successfully.")
-    except Exception as e:
-        logger.warning(f"Agent pre-warm failed (non-fatal): {e}")
-
-
 @app.get("/")
 def root():
     return {"status": "online", "service": "F1 Race Intelligence API"}
