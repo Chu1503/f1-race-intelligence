@@ -1,19 +1,35 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import anthropic
+from crewai import Agent, Task, Crew
+from langchain_anthropic import ChatAnthropic
 from config import settings
 
-_client: anthropic.Anthropic | None = None
+# ── Initialized once at module load — not per request ─────────────────────
+llm = ChatAnthropic(
+    model=settings.CLAUDE_MODEL,
+    api_key=settings.ANTHROPIC_API_KEY,
+    max_tokens=200,
+    timeout=60,
+)
 
-def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(
-            api_key=settings.ANTHROPIC_API_KEY,
-            timeout=60,
-        )
-    return _client
+commentary_agent = Agent(
+    role="F1 Live TV Commentator",
+    goal=(
+        "Deliver punchy, energetic lap-by-lap commentary that captures the drama "
+        "of the moment using real timing data and tyre information."
+    ),
+    backstory=(
+        "You are a seasoned F1 TV commentator with 20 years behind the microphone. "
+        "You've called world championships, shock retirements, and last-corner overtakes. "
+        "You translate raw telemetry into vivid, human stories that keep fans on the edge "
+        "of their seats. You are concise, specific, and never vague."
+    ),
+    llm=llm,
+    verbose=False,
+    allow_delegation=False,
+)
+# ──────────────────────────────────────────────────────────────────────────
 
 
 def generate_lap_commentary(
@@ -30,26 +46,31 @@ def generate_lap_commentary(
 ) -> str:
     deg_rate = tyre_degradation_rate or 0.0
     deg_note = (
-        f"{deg_rate:.4f}s/lap" if deg_rate > 0.01
-        else "minimal, tyres still feeling strong"
+        f"degrading at {deg_rate:.4f}s/lap" if deg_rate > 0.01
+        else "minimal degradation, tyres still feeling strong"
     )
-    pit_note = "box box box — pit window open" if should_pit_soon else "stay out, tyres OK"
+    pit_note = "box box box — pit window is open" if should_pit_soon else "stay out, tyres look okay"
     strat_line = f"\nStrategy note: {strategy_recommendation}" if strategy_recommendation else ""
 
-    prompt = f"""You're commentating live on this F1 moment:
+    task_description = f"""You're commentating live on this F1 moment:
 
 Driver: {driver_name} (#{driver_number})
 Lap {lap_number} — lap time {lap_duration:.3f}s
-Compound: {tyre_compound}, {tyre_age_laps} laps old
-Tyre degradation: {deg_note}
+Compound: {tyre_compound}, {tyre_age_laps} laps old, {deg_note}
 Pit call: {pit_note}
 Position: {position if position else "unknown"}{strat_line}
 
-Write 2-3 sentences of natural, human commentary. Sound like a real TV commentator — specific, energetic, grounded in the data. No bullet points, no bold text, no em dashes, no corporate phrases."""
+Write 2-3 sentences of natural, human commentary. Sound like a real TV commentator — specific, energetic, grounded in the data. No bullet points, no bold text, no em dashes, no corporate phrases. Write like you're live on air."""
 
-    response = _get_client().messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=200,
-        messages=[{"role": "user", "content": prompt}],
+    task = Task(
+        description=task_description,
+        agent=commentary_agent,
+        expected_output=(
+            "2-3 sentences of vivid, live TV commentary. "
+            "Energetic and specific to the data provided. "
+            "No markdown, no headers, no bullet points, no bold, no em dashes."
+        )
     )
-    return response.content[0].text
+
+    crew = Crew(agents=[commentary_agent], tasks=[task], verbose=False)
+    return str(crew.kickoff())
