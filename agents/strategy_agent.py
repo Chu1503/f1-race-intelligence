@@ -3,16 +3,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from crewai import Agent, Task, Crew
-from langchain_anthropic import ChatAnthropic
 from config import settings
 
 # ── Initialized once at module load — not per request ─────────────────────
-llm = ChatAnthropic(
-    model=settings.CLAUDE_MODEL,
-    api_key=settings.ANTHROPIC_API_KEY,
-    max_tokens=256,
-    timeout=60,
-)
+# crewai 1.x: pass model string directly — LiteLLM handles the Anthropic call,
+# no sentence-transformers / ONNX pulled in.
+_MODEL = f"anthropic/{settings.CLAUDE_MODEL}"
 
 strategy_agent = Agent(
     role="F1 Race Strategy Director",
@@ -26,7 +22,8 @@ strategy_agent = Agent(
         "opportunities, and how track position affects race outcomes. "
         "You make data-driven decisions under time pressure, balancing risk and reward."
     ),
-    llm=llm,
+    llm=_MODEL,
+    max_iter=1,
     verbose=False,
     allow_delegation=False,
 )

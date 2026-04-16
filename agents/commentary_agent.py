@@ -2,16 +2,10 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from crewai import Agent, Task, Crew
-from langchain_anthropic import ChatAnthropic
 from config import settings
 
 # ── Initialized once at module load — not per request ─────────────────────
-llm = ChatAnthropic(
-    model=settings.CLAUDE_MODEL,
-    api_key=settings.ANTHROPIC_API_KEY,
-    max_tokens=200,
-    timeout=60,
-)
+_MODEL = f"anthropic/{settings.CLAUDE_MODEL}"
 
 commentary_agent = Agent(
     role="F1 Live TV Commentator",
@@ -25,7 +19,8 @@ commentary_agent = Agent(
         "You translate raw telemetry into vivid, human stories that keep fans on the edge "
         "of their seats. You are concise, specific, and never vague."
     ),
-    llm=llm,
+    llm=_MODEL,
+    max_iter=1,
     verbose=False,
     allow_delegation=False,
 )
