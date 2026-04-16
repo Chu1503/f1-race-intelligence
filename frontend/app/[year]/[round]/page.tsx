@@ -14,12 +14,12 @@ import {
   Legend,
 } from "recharts";
 import {
-  getTeamLogo,
+  // getTeamLogo,
   TYRE_COLORS,
   getTeamColor,
   type CalendarRace,
   type SessionDriver,
-} from "../../../lib/constants"
+} from "../../../lib/constants";
 import {
   getCalendar,
   getLaps,
@@ -228,7 +228,7 @@ function SectionTitle({
       >
         {children}
       </div>
-      {sub && (
+      {/* {sub && (
         <div
           style={{
             fontSize: 14,
@@ -239,7 +239,7 @@ function SectionTitle({
         >
           {sub}
         </div>
-      )}
+      )} */}
     </div>
   );
 }
@@ -374,65 +374,38 @@ function TyreChip({ compound, small }: { compound: string; small?: boolean }) {
     </span>
   );
 }
-// Tyre chip without bullet, with contrast-aware colors for use on coloured row bg
-function TyreChipContrast({
-  compound,
-  bgColor,
-}: {
-  compound: string;
-  bgColor: string;
-}) {
-  const tyreColor = TYRE_COLORS[compound] || "#888";
-  const dark = bgIsDark(bgColor);
+function TyreChipContrast({ compound }: { compound: string }) {
+  const TYRE: Record<string, string> = {
+    SOFT: "#E8002D", MEDIUM: "#FFD700", HARD: "#EEEEEE",
+    INTER: "#39B54A", INTERMEDIATE: "#39B54A", WET: "#0067FF",
+  };
+  const color = TYRE[compound] || "#888";
+  const isHard = compound === "HARD";
+  const displayColor = isHard ? "#000" : color;
+  const bg = bgIsDark(displayColor) ? "#000" : "#000";
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "2px 8px",
-        borderRadius: 2,
-        border: `1px solid ${dark ? tyreColor + "99" : tyreColor}`,
-        color: dark ? tyreColor : bgIsDark(tyreColor) ? "#fff" : "#111",
-        fontSize: 11,
-        fontFamily: "'Barlow Condensed',sans-serif",
-        fontWeight: 700,
-        letterSpacing: "0.08em",
-        background: dark ? `${tyreColor}18` : `${tyreColor}33`,
-      }}
-    >
-      {compound}
-    </span>
+    <span style={{
+      display: "inline-flex", alignItems: "center",
+      padding: "2px 8px", borderRadius: 2,
+      border: `1px solid ${color}`,
+      color: color,
+      fontSize: 11, fontFamily: "'Barlow Condensed',sans-serif",
+      fontWeight: 700, letterSpacing: "0.08em",
+      background: bg,
+    }}>{compound}</span>
   );
 }
-// Status badge contrast-aware
-function StatusBadge({
-  label,
-  color,
-  bgColor,
-}: {
-  label: string;
-  color: string;
-  bgColor: string;
-}) {
-  const dark = bgIsDark(bgColor);
+function StatusBadge({ label, color }: { label: string; color: string }) {
+  const bg = bgIsDark(color) ? "#000" : "#000";
   return (
-    <span
-      style={{
-        fontFamily: "'Barlow Condensed',sans-serif",
-        fontSize: 13,
-        fontWeight: 700,
-        letterSpacing: "0.08em",
-        padding: "3px 10px",
-        borderRadius: 2,
-        border: `1px solid ${dark ? color + "88" : color}`,
-        color: dark ? color : bgIsDark(color) ? "#fff" : "#111",
-        background: dark ? `${color}18` : `${color}33`,
-        whiteSpace: "nowrap",
-        display: "inline-block",
-      }}
-    >
-      {label}
-    </span>
+    <span style={{
+      fontFamily: "'Barlow Condensed',sans-serif", fontSize: 13, fontWeight: 700,
+      letterSpacing: "0.08em", padding: "3px 10px", borderRadius: 2,
+      border: `1px solid ${color}`,
+      color: color,
+      background: bg,
+      whiteSpace: "nowrap", display: "inline-block",
+    }}>{label}</span>
   );
 }
 function PitFlagBadge({ yes }: { yes: boolean }) {
@@ -873,15 +846,14 @@ function F1Header({ cols, labels }: { cols: string; labels: string[] }) {
   );
 }
 
-// Driver name + sub code in a coloured row — handles text overflow, no cut-off
 function DriverName({
-  logo,
+  // logo,
   team,
   full,
   sub,
   bgColor,
 }: {
-  logo: string | null;
+  // logo: string | null;
   team: string;
   full: string;
   sub?: string;
@@ -899,8 +871,7 @@ function DriverName({
         overflow: "hidden",
       }}
     >
-      {/* Logo box */}
-      <div
+      {/* <div
         style={{
           width: 48,
           minWidth: 48,
@@ -928,8 +899,7 @@ function DriverName({
             }}
           />
         )}
-      </div>
-      {/* Text — paddingRight prevents last glyph clipping at overflow:hidden boundary */}
+      </div> */}
       <div style={{ minWidth: 0, flex: 1, paddingRight: 8 }}>
         <div
           style={{
@@ -948,7 +918,7 @@ function DriverName({
         >
           {full}
         </div>
-        {sub && (
+        {/* {sub && (
           <div
             style={{
               fontFamily: "'Barlow Condensed',sans-serif",
@@ -962,7 +932,7 @@ function DriverName({
           >
             {sub}
           </div>
-        )}
+        )} */}
       </div>
     </div>
   );
@@ -1321,6 +1291,12 @@ export default function RacePage() {
     raceResults: RaceResult[]
   ): Record<number, SessionDriver> {
     const map: Record<number, SessionDriver> = {};
+
+    // Build code→result lookup from Jolpica (accurate name/team)
+    const resultByCode: Record<string, RaceResult> = {};
+    for (const r of raceResults) resultByCode[r.abbreviation] = r;
+
+    // Collect pairs from FastF1 — these driver_numbers are the real car numbers
     const pairs: { num: number; code: string }[] = [];
     for (const f of fl)
       pairs.push({ num: f.driver_number, code: f.driver_code });
@@ -1330,22 +1306,19 @@ export default function RacePage() {
     for (const t of ts)
       if (!pairs.find((x) => x.num === t.driver_number))
         pairs.push({ num: t.driver_number, code: t.driver_code });
-    for (const r of raceResults)
-      if (!pairs.find((x) => x.num === r.driver_number))
-        pairs.push({ num: r.driver_number, code: r.abbreviation });
+
     for (const { num, code } of pairs) {
-      const ji = jolpica[code];
-      const fr = raceResults.find(
-        (r) => r.abbreviation === code || r.driver_number === num
-      );
+      // Match by 3-letter code to Jolpica result — gets correct name and team
+      const fromResult = resultByCode[code];
       map[num] = {
         race_number: num,
         code,
-        full_name: ji?.full_name || fr?.full_name || code,
-        team: ji?.team || fr?.team || "",
-        color: ji?.color || getTeamColor(ji?.team || fr?.team || ""),
+        full_name: fromResult?.full_name || jolpica[code]?.full_name || code,
+        team: fromResult?.team || jolpica[code]?.team || "",
+        color: getTeamColor(fromResult?.team || jolpica[code]?.team || ""),
       };
     }
+
     return map;
   }
 
@@ -1446,7 +1419,8 @@ export default function RacePage() {
       circuit_name: circuitName,
       total_race_laps: Math.max(...laps.map((l) => l.lap_number)),
     });
-    setStratResult(r.recommendation || r.detail || "No response");
+    // setStratResult(r.recommendation || r.detail || "No response");
+    setStratResult(r?.recommendation || r?.detail || "No response");
     setStratLoading(false);
   };
   const handleCommentary = async () => {
@@ -1528,46 +1502,49 @@ export default function RacePage() {
     (l) => l.driver_number === stratDriver && l.lap_number === stratLap
   );
 
-  const enrichedPitStops: PitStop[] = pitStops.map((ps) => {
-    let sd: SessionDriver | undefined = sdByNum[ps.driver_number];
-    if (!sd && ps.driver_code)
-      sd = Object.values(sdByNum).find(
-        (s) => s.code === ps.driver_code.toUpperCase()
-      );
+  const enrichedPitStops: PitStop[] = pitStops.map(ps => {
+    let sd: SessionDriver | undefined;
+  
+    // Priority 1: match by driver_code (3-letter) — same as fastest laps, most reliable
+    if (ps.driver_code) {
+      sd = Object.values(sdByNum).find(s => s.code === ps.driver_code.toUpperCase());
+    }
+  
+    // Priority 2: match by driver_id slug against full names in sdByNum
     if (!sd && ps.driver_id) {
       const slug = ps.driver_id.toLowerCase().replace(/_/g, "");
-      sd = Object.values(sdByNum).find((s) => {
-        const fs = s.full_name.toLowerCase().replace(/\s/g, "");
-        const sn = s.full_name.split(" ").pop()?.toLowerCase() || "";
-        const fn = s.full_name.split(" ")[0]?.toLowerCase() || "";
+      sd = Object.values(sdByNum).find(s => {
+        const fullSlug = s.full_name.toLowerCase().replace(/\s/g, "");
+        const surname = s.full_name.split(" ").pop()?.toLowerCase() || "";
+        const firstname = s.full_name.split(" ")[0]?.toLowerCase() || "";
         return (
-          fs === slug ||
-          slug === fn + sn ||
-          slug.includes(sn) ||
+          fullSlug === slug ||
+          slug === firstname + surname ||
+          slug.includes(surname) ||
           s.code.toLowerCase() === ps.driver_id.toLowerCase()
         );
       });
     }
+  
+    // Priority 3: match by driver_number directly
+    if (!sd) {
+      sd = sdByNum[ps.driver_number];
+    }
+  
+    // Priority 4: match driver_id against results by surname
     if (!sd && ps.driver_id) {
       const slug = ps.driver_id.toLowerCase().replace(/_/g, "");
-      const mr = results.find((r) => {
-        const f = r.full_name.toLowerCase().replace(/\s/g, "");
-        const sn = r.full_name.split(" ").pop()?.toLowerCase() || "";
-        return (
-          f === slug ||
-          slug.includes(sn) ||
-          r.abbreviation.toLowerCase() === ps.driver_id.toLowerCase()
-        );
+      const mr = results.find(r => {
+        const full = r.full_name.toLowerCase().replace(/\s/g, "");
+        const surname = r.full_name.split(" ").pop()?.toLowerCase() || "";
+        return full === slug || slug.includes(surname) || r.abbreviation.toLowerCase() === ps.driver_id.toLowerCase();
       });
-      if (mr)
-        sd = {
-          race_number: mr.driver_number,
-          code: mr.abbreviation,
-          full_name: mr.full_name,
-          team: mr.team,
-          color: mr.team_color || getTeamColor(mr.team),
-        };
+      if (mr) {
+        // Find in sdByNum by abbreviation
+        sd = Object.values(sdByNum).find(s => s.code === mr.abbreviation);
+      }
     }
+  
     return { ...ps, sd, driver_number: sd?.race_number || ps.driver_number };
   });
 
@@ -1580,12 +1557,10 @@ export default function RacePage() {
   })();
   function sdForResult(r: RaceResult) {
     return (
-      sdByNum[r.driver_number] ||
-      Object.values(sdByNum).find((s) => s.code === r.abbreviation)
+      Object.values(sdByNum).find((s) => s.code === r.abbreviation) ||
+      sdByNum[r.driver_number]
     );
   }
-
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: C.black }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}`}</style>
@@ -2520,7 +2495,7 @@ export default function RacePage() {
                       {results.map((r, i) => {
                         const sd = sdForResult(r);
                         const color = sd?.color || getTeamColor(r.team || "");
-                        const logo = getTeamLogo(r.team || "");
+                        // const logo = getTeamLogo(r.team || "");
                         const s = statusLabel(r.status);
                         const isDNS = s.label === "DNS";
                         const podium = [C.gold, C.silver, C.bronze];
@@ -2549,7 +2524,7 @@ export default function RacePage() {
                             }
                           >
                             <DriverName
-                              logo={logo}
+                              // logo={logo}
                               team={r.team}
                               full={r.full_name}
                               sub={r.abbreviation}
@@ -2586,13 +2561,14 @@ export default function RacePage() {
                               <StatusBadge
                                 label={s.label}
                                 color={s.color}
-                                bgColor={color}
+                                // bgColor={color}
                               />
                               {r.fastest_lap_rank === 1 && (
                                 <span
                                   style={{
                                     fontSize: 10,
                                     color: "#a855f7",
+                                    background: "#000",
                                     border: "1px solid #a855f766",
                                     padding: "1px 5px",
                                     borderRadius: 2,
@@ -2602,7 +2578,7 @@ export default function RacePage() {
                                     flexShrink: 0,
                                   }}
                                 >
-                                  ⚡ FL
+                                FL
                                 </span>
                               )}
                             </div>
@@ -2708,7 +2684,7 @@ export default function RacePage() {
                     {fastestLaps.map((fl, i) => {
                       const sd = sdByNum[fl.driver_number];
                       const color = sd?.color || "#888";
-                      const logo = getTeamLogo(sd?.team || "");
+                      // const logo = getTeamLogo(sd?.team || "");
                       return (
                         <F1Row
                           key={i}
@@ -2730,7 +2706,7 @@ export default function RacePage() {
                           }
                         >
                           <DriverName
-                            logo={logo}
+                            // logo={logo}
                             team={sd?.team || ""}
                             full={sd?.full_name || fl.driver_code}
                             sub={fl.driver_code}
@@ -2747,7 +2723,6 @@ export default function RacePage() {
                               {sd?.team || "—"}
                             </span>
                           </Val>
-                          {/* Lap time — always purple if rank 1, else contrast text */}
                           <Val
                             bgColor={color}
                             mono
@@ -2766,7 +2741,7 @@ export default function RacePage() {
                           >
                             <TyreChipContrast
                               compound={fl.tyre_compound}
-                              bgColor={color}
+                              // bgColor={color}
                             />
                           </div>
                         </F1Row>
@@ -2899,7 +2874,7 @@ export default function RacePage() {
                       .map((ps, i) => {
                         const sd = (ps as any).sd || sdByNum[ps.driver_number];
                         const color = sd?.color || "#888";
-                        const logo = getTeamLogo(sd?.team || "");
+                        // const logo = getTeamLogo(sd?.team || "");
                         const dur = ps.duration_seconds;
                         const isFastest =
                           fastestStopDur !== null && dur === fastestStopDur;
@@ -2929,7 +2904,7 @@ export default function RacePage() {
                             }
                           >
                             <DriverName
-                              logo={logo}
+                              // logo={logo}
                               team={sd?.team || ""}
                               full={
                                 sd?.full_name || ps.driver_code || ps.driver_id

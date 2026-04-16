@@ -12,6 +12,7 @@ from typing import Optional
 from loguru import logger
 from logger_config import setup_logging
 from datetime import datetime
+import unicodedata
 
 setup_logging()
 
@@ -61,10 +62,37 @@ _driver_cache: dict = {}
 _calendar_cache: dict = {}
 _results_cache: dict = {}
 
+_DISK_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "jolpica_cache")
+os.makedirs(_DISK_CACHE_DIR, exist_ok=True)
+
+def _disk_cache_read(key: str):
+    import json
+    path = os.path.join(_DISK_CACHE_DIR, f"{key}.json")
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
+
+def _disk_cache_write(key: str, data):
+    import json
+    path = os.path.join(_DISK_CACHE_DIR, f"{key}.json")
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
 
 def fetch_drivers_for_year(year: int) -> list:
     if year in _driver_cache:
         return _driver_cache[year]
+    cached = _disk_cache_read(f"drivers_{year}")
+    if cached is not None:
+        _driver_cache[year] = cached
+        return cached
     try:
         r = requests.get(
             f"https://api.jolpi.ca/ergast/f1/{year}/drivers.json", timeout=10
@@ -97,6 +125,7 @@ def fetch_drivers_for_year(year: int) -> list:
             })
 
         _driver_cache[year] = drivers
+        _disk_cache_write(f"drivers_{year}", drivers)
         return drivers
     except Exception as e:
         logger.warning(f"Could not fetch live drivers for {year}: {e}")
@@ -106,6 +135,10 @@ def fetch_drivers_for_year(year: int) -> list:
 def fetch_calendar_for_year(year: int) -> list:
     if year in _calendar_cache:
         return _calendar_cache[year]
+    cached = _disk_cache_read(f"calendar_{year}")
+    if cached is not None:
+        _calendar_cache[year] = cached
+        return cached
     try:
         r = requests.get(f"https://api.jolpi.ca/ergast/f1/{year}.json", timeout=10)
         races_raw = r.json()["MRData"]["RaceTable"]["Races"]
@@ -121,6 +154,7 @@ def fetch_calendar_for_year(year: int) -> list:
                 "date": race.get("date", ""),
             })
         _calendar_cache[year] = races
+        _disk_cache_write(f"calendar_{year}", races)
         return races
     except Exception as e:
         logger.warning(f"Could not fetch calendar for {year}: {e}")
@@ -482,8 +516,30 @@ def get_tyre_strategies(year: int, round_number: int):
 
 @app.get("/race/{year}/{round_number}/pit-stops")
 def get_pit_stops(year: int, round_number: int):
-    """Pit stop times. Tries Jolpica first, falls back to FastF1."""
+    results = fetch_results_from_jolpica(year, round_number)
 
+    def norm(s: str) -> str:
+        return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").lower()
+
+    def resolve_abbr(driver_id: str) -> str:
+        if not driver_id:
+            return ""
+        driver_id_clean = norm(driver_id.replace("_", ""))
+        for res in results:
+            abbr = res["abbreviation"]
+            full = res["full_name"]
+            surname = norm(full.split()[-1])
+            firstname = norm(full.split()[0])
+            full_norm = norm(full.replace(" ", ""))
+            if (driver_id_clean == full_norm or
+                driver_id_clean == firstname + surname or
+                driver_id_clean == surname or
+                norm(driver_id) == surname or
+                norm(abbr) == norm(driver_id)):
+                return abbr
+        return ""
+
+    # ── Try Jolpica ──────────────────────────────────────────────────────────
     try:
         r = requests.get(
             f"https://api.jolpi.ca/ergast/f1/{year}/{round_number}/pitstops.json?limit=100",
@@ -493,29 +549,15 @@ def get_pit_stops(year: int, round_number: int):
         if data and data[0].get("PitStops"):
             pit_stops = data[0]["PitStops"]
 
-            # Build driverId → driver_number map from results
-            results = fetch_results_from_jolpica(year, round_number)
-            # jolpica driverId is like "max_verstappen" — map via full name match
-            # We also get it from the results abbreviation
-            abbr_to_num: dict = {r["abbreviation"].lower(): r["driver_number"] for r in results}
-
             result = []
             for p in pit_stops:
                 driver_id = p.get("driverId", "")
-                # Try to find driver number: jolpica driverId ends with surname
+                abbr = resolve_abbr(driver_id)
+                
+                # Get driver_number from results by abbreviation
                 driver_num = 0
-                driver_id_clean = driver_id.lower().replace("_", "")
                 for res in results:
-                    full = res["full_name"].lower()
-                    surname = full.split()[-1]
-                    firstname = full.split()[0]
-                    full_slug = (firstname + surname)
-                    abbr = res["abbreviation"].lower()
-                    
-                    if (surname in driver_id.lower()
-                        or driver_id_clean == full_slug
-                        or driver_id.lower() == abbr
-                        or firstname in driver_id.lower() and surname in driver_id.lower()):
+                    if res["abbreviation"] == abbr:
                         driver_num = res["driver_number"]
                         break
 
@@ -528,15 +570,25 @@ def get_pit_stops(year: int, round_number: int):
                 result.append({
                     "driver_number": driver_num,
                     "driver_id": driver_id,
-                    "driver_code": "",
+                    "driver_code": abbr,  # now correctly populated
                     "stop_number": int(p.get("stop", 1)),
                     "lap": int(p.get("lap", 0)),
                     "time_of_day": p.get("time", ""),
                     "duration_seconds": duration_s,
                     "duration_formatted": p.get("duration", "—"),
                 })
-            result.sort(key=lambda x: (x["lap"], x["duration_seconds"] or 99))
-            return result
+
+            # Deduplicate
+            seen = set()
+            deduped = []
+            for p in result:
+                key = (p["driver_id"], p["stop_number"], p["lap"])
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(p)
+
+            deduped.sort(key=lambda x: (x["lap"], x["duration_seconds"] or 99))
+            return deduped
     except Exception as e:
         logger.warning(f"Jolpica pit stops error: {e}")
 
@@ -544,14 +596,13 @@ def get_pit_stops(year: int, round_number: int):
     try:
         session = _get_fastf1_session(year, round_number)
         laps = session.laps.copy()
-
-        # Pit-in laps: where the driver came into the pits
         pit_laps = laps[laps["PitInTime"].notna()].copy()
 
         result = []
         stop_counter: dict = {}
         for _, row in pit_laps.sort_values("LapNumber").iterrows():
             dnum = int(row["DriverNumber"])
+            code = str(row["Driver"])  # FastF1 3-letter code, reliable
             stop_counter[dnum] = stop_counter.get(dnum, 0) + 1
 
             pit_duration = None
@@ -572,8 +623,8 @@ def get_pit_stops(year: int, round_number: int):
 
             result.append({
                 "driver_number": dnum,
-                "driver_id": str(row["Driver"]),
-                "driver_code": str(row["Driver"]),
+                "driver_id": code,
+                "driver_code": code,  # FastF1 code is reliable
                 "stop_number": stop_counter[dnum],
                 "lap": int(row["LapNumber"]),
                 "time_of_day": "",
@@ -586,7 +637,6 @@ def get_pit_stops(year: int, round_number: int):
     except Exception as e:
         logger.warning(f"FastF1 pit stops fallback error: {e}")
         return []
-
 
 @app.post("/batch/process")
 def run_batch_processor(year: int, round_number: int):
@@ -602,7 +652,6 @@ def run_batch_processor(year: int, round_number: int):
         "message": f"Processing {year} Round {round_number} in background. Data will appear in ~60 seconds.",
     }
 
-
 @app.post("/strategy")
 def get_strategy(situation: DriverSituation):
     try:
@@ -610,6 +659,8 @@ def get_strategy(situation: DriverSituation):
         result = analyze_driver_situation(**situation.model_dump())
         return {"driver_number": situation.driver_number, "recommendation": result}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
