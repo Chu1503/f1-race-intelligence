@@ -6,7 +6,7 @@ from loguru import logger
 from config import settings
 
 INDEX_NAME = "f1-race-intelligence"
-DIMENSION = 768
+DIMENSION = 1024  # voyage-2 embedding dimension
 METRIC = "cosine"
 
 def get_pinecone_client() -> Pinecone:
