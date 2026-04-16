@@ -20,4 +20,4 @@ services:
       - key: LOG_LEVEL
         value: INFO
       - key: FRONTEND_URL
-        value: f1-race-intelligence.vercel.app
+        value: https://f1-race-intelligence.vercel.app

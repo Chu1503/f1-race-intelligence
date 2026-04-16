@@ -18,13 +18,17 @@ setup_logging()
 
 app = FastAPI(title="F1 Race Intelligence API", version="1.0.0")
 
+_extra_origin = os.getenv("FRONTEND_URL", "").strip()
+_allow_origins = [
+    "http://localhost:3000",
+    "https://f1-race-intelligence.vercel.app",
+]
+if _extra_origin:
+    _allow_origins.append(_extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://f1-race-intelligence.vercel.app",
-        os.getenv("FRONTEND_URL", ""),
-    ],
+    allow_origins=_allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -426,41 +430,45 @@ def get_lap_positions(year: int, round_number: int):
 
 @app.get("/race/{year}/{round_number}/fastest-laps")
 def get_fastest_laps(year: int, round_number: int):
-    """Each driver's fastest lap. Uses FastF1 driver codes (correct for this season/race)."""
+    """Each driver's fastest lap — built from parquet, no FastF1 needed."""
     try:
-        session = _get_fastf1_session(year, round_number)
-        laps = session.laps.copy()
-        laps = laps.dropna(subset=["LapTime"])
+        path = f"data/spark_output/historical/{year}_round{round_number}"
+        if not os.path.exists(path):
+            return []
+
+        df = pd.read_parquet(path)
+        # parquet already filters 60 < lap_duration < 200 — all laps are valid race laps
+        df = df[df["lap_duration"] > 0]
+
+        # Get driver_number → abbreviation map from Jolpica
+        results = fetch_results_from_jolpica(year, round_number)
+        num_to_code = {r["driver_number"]: r["abbreviation"] for r in results}
 
         fastest = []
-        for driver_num in laps["DriverNumber"].unique():
-            driver_laps = laps[laps["DriverNumber"] == driver_num]
+        for dnum in df["driver_number"].unique():
+            dnum_int = int(dnum)
+            driver_laps = df[df["driver_number"] == dnum_int]
             if driver_laps.empty:
                 continue
-            best = driver_laps.loc[driver_laps["LapTime"].idxmin()]
-            lap_time_s = (
-                best["LapTime"].total_seconds()
-                if hasattr(best["LapTime"], "total_seconds")
-                else float(best["LapTime"])
-            )
+            best = driver_laps.loc[driver_laps["lap_duration"].idxmin()]
+
+            lap_time_s = float(best["lap_duration"])
             mins = int(lap_time_s // 60)
             secs = lap_time_s % 60
             formatted = f"{mins}:{secs:06.3f}"
 
-            speed_val = best.get("SpeedI1", None)
-            try:
-                speed = round(float(speed_val), 1) if speed_val is not None and not pd.isna(speed_val) else 0
-            except Exception:
-                speed = 0
+            compound = best.get("tyre_compound", "UNKNOWN")
+            if pd.isna(compound):
+                compound = "UNKNOWN"
 
             fastest.append({
-                "driver_number": int(best["DriverNumber"]),
-                "driver_code": str(best["Driver"]),
-                "lap_number": int(best["LapNumber"]),
+                "driver_number": dnum_int,
+                "driver_code": num_to_code.get(dnum_int, str(dnum_int)),
+                "lap_number": int(best["lap_number"]),
                 "lap_time_seconds": round(lap_time_s, 3),
                 "lap_time_formatted": formatted,
-                "avg_speed_kph": speed,
-                "tyre_compound": str(best.get("Compound", "UNKNOWN")),
+                "avg_speed_kph": 0,
+                "tyre_compound": str(compound),
             })
 
         fastest.sort(key=lambda x: x["lap_time_seconds"])
@@ -474,45 +482,49 @@ def get_fastest_laps(year: int, round_number: int):
 
 @app.get("/race/{year}/{round_number}/tyre-strategies")
 def get_tyre_strategies(year: int, round_number: int):
-    """Tyre stint data. Uses FastF1 driver numbers (correct for this session)."""
+    """Tyre stint data — built from parquet (stint_number column), no FastF1 needed."""
     try:
-        session = _get_fastf1_session(year, round_number)
-        laps = session.laps[["Driver", "DriverNumber", "LapNumber", "Compound", "Stint"]].copy()
-        laps = laps.dropna(subset=["LapNumber", "Compound"])
-        laps["LapNumber"] = laps["LapNumber"].astype(int)
-        laps["DriverNumber"] = laps["DriverNumber"].astype(int)
-        laps["Stint"] = laps["Stint"].astype(int)
+        path = f"data/spark_output/historical/{year}_round{round_number}"
+        if not os.path.exists(path):
+            return []
 
-        strategies: dict = {}
-        for _, row in laps.iterrows():
-            dnum = int(row["DriverNumber"])
-            code = str(row["Driver"])
-            if dnum not in strategies:
-                strategies[dnum] = {"driver_number": dnum, "driver_code": code, "stints": {}}
-            stint = int(row["Stint"])
-            compound = str(row["Compound"])
-            if stint not in strategies[dnum]["stints"]:
-                strategies[dnum]["stints"][stint] = {"stint": stint, "compound": compound, "laps": []}
-            strategies[dnum]["stints"][stint]["laps"].append(int(row["LapNumber"]))
+        df = pd.read_parquet(path)
+        df = df.sort_values(["driver_number", "lap_number"])
+
+        # Get driver_number → abbreviation map from Jolpica
+        results = fetch_results_from_jolpica(year, round_number)
+        num_to_code = {r["driver_number"]: r["abbreviation"] for r in results}
 
         result = []
-        for dnum, data in strategies.items():
+        for dnum in sorted(df["driver_number"].unique()):
+            dnum_int = int(dnum)
+            driver_laps = df[df["driver_number"] == dnum_int]
+            code = num_to_code.get(dnum_int, str(dnum_int))
+
             stints = []
-            for stint_num in sorted(data["stints"].keys()):
-                s = data["stints"][stint_num]
-                lap_list = sorted(s["laps"])
+            # Group by stint_number (computed by Spark from tyre_age_laps resets)
+            for stint_num in sorted(driver_laps["stint_number"].unique()):
+                stint_laps = driver_laps[driver_laps["stint_number"] == stint_num]
+                if stint_laps.empty:
+                    continue
+                # Most common compound in this stint (handles null rows)
+                compound_series = stint_laps["tyre_compound"].dropna()
+                compound = str(compound_series.mode().iloc[0]) if not compound_series.empty else "UNKNOWN"
+                lap_nums = sorted(stint_laps["lap_number"].tolist())
                 stints.append({
-                    "stint": s["stint"],
-                    "compound": s["compound"],
-                    "start_lap": lap_list[0],
-                    "end_lap": lap_list[-1],
-                    "lap_count": len(lap_list),
+                    "stint": int(stint_num) + 1,  # stint_number is 0-indexed in parquet
+                    "compound": compound,
+                    "start_lap": lap_nums[0],
+                    "end_lap": lap_nums[-1],
+                    "lap_count": len(lap_nums),
                 })
-            result.append({
-                "driver_number": dnum,
-                "driver_code": data["driver_code"],
-                "stints": stints,
-            })
+
+            if stints:
+                result.append({
+                    "driver_number": dnum_int,
+                    "driver_code": code,
+                    "stints": stints,
+                })
 
         return result
     except Exception as e:
