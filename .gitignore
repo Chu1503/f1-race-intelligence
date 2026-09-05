@@ -16,6 +16,8 @@ build/
 # Data — large caches, never commit these
 data/spark_checkpoints/
 data/spark_output/lap_features/
+data/spark_output/live/
+data/jobs.sqlite3*
 data/fastf1_cache/
 notebooks/.ipynb_checkpoints/
 *.csv

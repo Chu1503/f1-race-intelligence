@@ -8,9 +8,44 @@ from logger_config import setup_logging
 from config import settings
 from spark_processing.spark_session import get_spark_session
 from spark_processing.schemas import LAP_DATA_SCHEMA
-from spark_processing.features import compute_all_features
+from spark_processing.pandas_features import compute_features_pandas
+from pathlib import Path
+import pandas as pd
+import uuid
 
 setup_logging()
+
+
+def _atomic_parquet(frame: pd.DataFrame, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    frame.to_parquet(temporary, index=False)
+    os.replace(temporary, destination)
+
+
+def write_live_batch(batch_df) -> int:
+    """Merge a micro-batch into a durable per-session snapshot.
+
+    Recomputing over the accumulated race avoids resetting rolling windows at
+    every Kafka micro-batch, which previously made live features misleading.
+    """
+    incoming = batch_df.toPandas()
+    written = 0
+    base = Path(settings.LIVE_OUTPUT_DIR)
+    for session_key, session_batch in incoming.groupby("session_key"):
+        session_dir = base / f"session_key={int(session_key)}"
+        raw_path = session_dir / "raw.parquet"
+        if raw_path.exists():
+            raw = pd.concat([pd.read_parquet(raw_path), session_batch], ignore_index=True)
+        else:
+            raw = session_batch.copy()
+        raw = raw.drop_duplicates(["driver_number", "lap_number"], keep="last")
+        raw = raw.sort_values(["driver_number", "lap_number"])
+        features = compute_features_pandas(raw)
+        _atomic_parquet(raw, raw_path)
+        _atomic_parquet(features, session_dir / "features.parquet")
+        written += len(features)
+    return written
 
 
 def create_lap_stream(spark):
@@ -37,7 +72,7 @@ def parse_lap_messages(raw_stream):
 
 
 def run_streaming_job():
-    spark = get_spark_session("F1LapProcessor")
+    spark = get_spark_session("F1LapProcessor", with_kafka=True)
     logger.info("Starting F1 Lap Processor streaming job...")
 
     raw_stream = create_lap_stream(spark)
@@ -50,39 +85,8 @@ def run_streaming_job():
 
         logger.info(f"Processing batch {batch_id}: {batch_df.count()} laps")
 
-        enriched_df = compute_all_features(batch_df)
-
-        logger.info(f"Batch {batch_id} enriched features sample:")
-        enriched_df.select(
-            "driver_number",
-            "lap_number",
-            "lap_duration",
-            "rolling_avg_lap_time",
-            "lap_delta",
-            "tyre_compound",
-            "tyre_age_laps",
-            "tyre_degradation_rate",
-            "should_pit_soon",
-            "estimated_laps_to_pit"
-        ).orderBy("driver_number", "lap_number").show(10, truncate=False)
-
-        # Write to in-memory table so agents can query it with SQL
-        enriched_df.write \
-            .mode("append") \
-            .saveAsTable("f1_lap_features")
-
-        # Write to parquet files as local warehouse
-        output_path = "data/spark_output/lap_features"
-        os.makedirs(output_path, exist_ok=True)
-        enriched_df.write \
-            .mode("append") \
-            .partitionBy("driver_number") \
-            .parquet(output_path)
-
-        logger.info(
-            f"Batch {batch_id} complete: wrote {enriched_df.count()} "
-            f"enriched laps to warehouse"
-        )
+        feature_rows = write_live_batch(batch_df)
+        logger.info(f"Batch {batch_id} complete: live snapshot now has {feature_rows} feature rows")
 
     query = (
         parsed_stream.writeStream

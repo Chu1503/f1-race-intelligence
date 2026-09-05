@@ -5,18 +5,33 @@ import re
 import threading
 import requests
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from typing import Optional
 from loguru import logger
 from logger_config import setup_logging
 from datetime import datetime
 import unicodedata
+from pathlib import Path
+
+from api.jobs import job_manager
+from api.security import rate_limit, require_service_key
+from config import settings
 
 setup_logging()
 
+
+class DataProviderError(RuntimeError):
+    pass
+
 app = FastAPI(title="F1 Race Intelligence API", version="1.0.0")
+
+
+@app.exception_handler(DataProviderError)
+async def provider_error_handler(_request, exc: DataProviderError):
+    return JSONResponse(status_code=502, content={"detail": str(exc), "code": "provider_unavailable"})
 
 _extra_origin = os.getenv("FRONTEND_URL", "").strip()
 _allow_origins = [
@@ -66,6 +81,23 @@ _driver_cache: dict = {}
 _calendar_cache: dict = {}
 _results_cache: dict = {}
 _laps_cache: dict = {}   # (year, round) -> list[dict]
+_feature_frame_cache: dict[tuple[int, int], pd.DataFrame] = {}
+
+
+def _load_race_frame(year: int, round_number: int) -> pd.DataFrame:
+    key = (year, round_number)
+    if key in _feature_frame_cache:
+        return _feature_frame_cache[key].copy()
+    race_folder = f"{year}_round{round_number}"
+    persistent = settings.DATA_DIR / "spark_output" / "historical" / race_folder
+    packaged = settings.PROJECT_ROOT / "data" / "spark_output" / "historical" / race_folder
+    path = persistent if persistent.exists() else packaged
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="No processed race data found.")
+    from spark_processing.pandas_features import compute_features_pandas
+    frame = compute_features_pandas(pd.read_parquet(path))
+    _feature_frame_cache[key] = frame
+    return frame.copy()
 
 _DISK_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "jolpica_cache")
 os.makedirs(_DISK_CACHE_DIR, exist_ok=True)
@@ -102,11 +134,13 @@ def fetch_drivers_for_year(year: int) -> list:
         r = requests.get(
             f"https://api.jolpi.ca/ergast/f1/{year}/drivers.json", timeout=10
         )
+        r.raise_for_status()
         drivers_raw = r.json()["MRData"]["DriverTable"]["Drivers"]
 
         standings_r = requests.get(
             f"https://api.jolpi.ca/ergast/f1/{year}/driverStandings.json", timeout=10
         )
+        standings_r.raise_for_status()
         standings_data = standings_r.json()["MRData"]["StandingsTable"]["StandingsLists"]
         team_map = {}
         if standings_data:
@@ -134,7 +168,7 @@ def fetch_drivers_for_year(year: int) -> list:
         return drivers
     except Exception as e:
         logger.warning(f"Could not fetch live drivers for {year}: {e}")
-        return []
+        raise DataProviderError(f"Driver data provider is unavailable for {year}.") from e
 
 
 def fetch_calendar_for_year(year: int) -> list:
@@ -146,6 +180,7 @@ def fetch_calendar_for_year(year: int) -> list:
         return cached
     try:
         r = requests.get(f"https://api.jolpi.ca/ergast/f1/{year}.json", timeout=10)
+        r.raise_for_status()
         races_raw = r.json()["MRData"]["RaceTable"]["Races"]
         races = []
         for race in races_raw:
@@ -163,7 +198,7 @@ def fetch_calendar_for_year(year: int) -> list:
         return races
     except Exception as e:
         logger.warning(f"Could not fetch calendar for {year}: {e}")
-        return []
+        raise DataProviderError(f"Calendar provider is unavailable for {year}.") from e
 
 
 def fetch_results_from_jolpica(year: int, round_number: int) -> list:
@@ -175,6 +210,7 @@ def fetch_results_from_jolpica(year: int, round_number: int) -> list:
             f"https://api.jolpi.ca/ergast/f1/{year}/{round_number}/results.json",
             timeout=10,
         )
+        r.raise_for_status()
         data = r.json()["MRData"]["RaceTable"]["Races"]
         if not data:
             return []
@@ -211,26 +247,38 @@ def fetch_results_from_jolpica(year: int, round_number: int) -> list:
         return results
     except Exception as e:
         logger.warning(f"Jolpica results error for {year} R{round_number}: {e}")
-        return []
+        raise DataProviderError(f"Results provider is unavailable for {year} round {round_number}.") from e
+
+
+_fastf1_session_cache: dict[tuple[int, int], object] = {}
+_fastf1_session_lock = threading.Lock()
 
 
 def _get_fastf1_session(year: int, round_number: int):
     """Load a FastF1 session with caching."""
-    import fastf1, warnings
-    warnings.filterwarnings("ignore")
-    from config import settings
-    fastf1.Cache.enable_cache(str(settings.FASTF1_CACHE_DIR))
-    session = fastf1.get_session(year, round_number, "R")
-    session.load(telemetry=False, weather=False, messages=False)
-    return session
+    key = (year, round_number)
+    if key in _fastf1_session_cache:
+        return _fastf1_session_cache[key]
+    with _fastf1_session_lock:
+        if key in _fastf1_session_cache:
+            return _fastf1_session_cache[key]
+        import fastf1, warnings
+        warnings.filterwarnings("ignore")
+        fastf1.Cache.enable_cache(str(settings.FASTF1_CACHE_DIR))
+        session = fastf1.get_session(year, round_number, "R")
+        session.load(telemetry=False, weather=False, messages=False)
+        if len(_fastf1_session_cache) >= 12:
+            _fastf1_session_cache.pop(next(iter(_fastf1_session_cache)))
+        _fastf1_session_cache[key] = session
+        return session
 
 
 class DriverSituation(BaseModel):
-    driver_number: int
-    lap_number: int
-    lap_duration: float
-    tyre_compound: str
-    tyre_age_laps: int
+    driver_number: int = Field(ge=1, le=999)
+    lap_number: int = Field(ge=1, le=200)
+    lap_duration: float = Field(gt=0, le=600)
+    tyre_compound: str = Field(min_length=1, max_length=32)
+    tyre_age_laps: int = Field(ge=0, le=200)
     tyre_degradation_rate: Optional[float] = 0.0
     rolling_avg_lap_time: Optional[float] = None
     lap_delta: Optional[float] = None
@@ -239,7 +287,7 @@ class DriverSituation(BaseModel):
     position: Optional[int] = None
     gap_to_leader: Optional[float] = None
     circuit_name: str = "unknown"
-    total_race_laps: int = 57
+    total_race_laps: int = Field(default=57, ge=1, le=200)
 
 
 class CommentaryRequest(BaseModel):
@@ -255,6 +303,11 @@ class CommentaryRequest(BaseModel):
     strategy_recommendation: Optional[str] = None
 
 
+class ProcessingRequest(BaseModel):
+    year: int = Field(ge=1950, le=2100)
+    round_number: int = Field(ge=1, le=30)
+
+
 
 @app.get("/")
 def root():
@@ -263,7 +316,26 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    historical = settings.PROJECT_ROOT / "data" / "spark_output" / "historical"
+    persistent_historical = settings.DATA_DIR / "spark_output" / "historical"
+    checks = {
+        "historical_data": any(root.exists() and any(root.glob("*_round*")) for root in {historical, persistent_historical}),
+        "job_store": settings.JOB_DB_PATH.parent.exists(),
+        "service_auth": bool(settings.SERVICE_API_KEY) or settings.ENVIRONMENT != "production",
+        "anthropic_configured": bool(settings.ANTHROPIC_API_KEY),
+        "rag_configured": bool(settings.PINECONE_API_KEY and settings.VOYAGE_API_KEY),
+    }
+    required = ("historical_data", "job_store", "service_auth")
+    ready = all(checks[name] for name in required)
+    return {"status": "healthy" if ready else "degraded", "ready": ready, "checks": checks}
+
+
+@app.get("/health/ready")
+def readiness():
+    report = health()
+    if not report["ready"]:
+        raise HTTPException(status_code=503, detail=report)
+    return report
 
 
 @app.get("/seasons")
@@ -284,15 +356,45 @@ def get_drivers_for_year(year: int):
 
 @app.get("/available-races")
 def get_available_races():
-    base = "data/spark_output/historical"
-    if not os.path.exists(base):
-        return {"races": []}
-    races = []
-    for folder in os.listdir(base):
-        match = re.match(r"(\d{4})_round(\d+)", folder)
-        if match:
-            races.append({"year": int(match.group(1)), "round": int(match.group(2))})
+    roots = {
+        settings.PROJECT_ROOT / "data" / "spark_output" / "historical",
+        settings.DATA_DIR / "spark_output" / "historical",
+    }
+    races_by_key = {}
+    for base in roots:
+        if not base.exists():
+            continue
+        for folder in base.iterdir():
+            match = re.fullmatch(r"(\d{4})_round(\d+)", folder.name)
+            if match and folder.is_dir() and (folder / "_SUCCESS").exists() and next(folder.rglob("*.parquet"), None):
+                key = (int(match.group(1)), int(match.group(2)))
+                races_by_key[key] = {"year": key[0], "round": key[1]}
+    races = list(races_by_key.values())
     return {"races": sorted(races, key=lambda x: (x["year"], x["round"]), reverse=True)}
+
+
+@app.get("/live/sessions")
+def get_live_sessions():
+    base = Path(settings.LIVE_OUTPUT_DIR)
+    sessions = []
+    if base.exists():
+        for folder in base.glob("session_key=*"):
+            features = folder / "features.parquet"
+            if features.exists():
+                sessions.append({
+                    "session_key": int(folder.name.split("=", 1)[1]),
+                    "updated_at": datetime.fromtimestamp(features.stat().st_mtime).isoformat(),
+                })
+    return {"mode": "live" if sessions else "historical", "sessions": sorted(sessions, key=lambda item: item["session_key"], reverse=True)}
+
+
+@app.get("/live/sessions/{session_key}/laps")
+def get_live_laps(session_key: int):
+    path = Path(settings.LIVE_OUTPUT_DIR) / f"session_key={session_key}" / "features.parquet"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="No processed live snapshot exists for that session.")
+    frame = pd.read_parquet(path).replace({float("nan"): None, float("inf"): None, float("-inf"): None})
+    return {"session_key": session_key, "laps": frame.to_dict(orient="records")}
 
 
 @app.get("/race/{year}/{round_number}/laps")
@@ -304,7 +406,7 @@ def get_all_laps(year: int, round_number: int):
         path = f"data/spark_output/historical/{year}_round{round_number}"
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="No data found. Run batch processor first.")
-        df = pd.read_parquet(path)
+        df = _load_race_frame(year, round_number)
         df = df.replace({float("nan"): None, float("inf"): None, float("-inf"): None})
         records = df.to_dict(orient="records")
         _laps_cache[key] = records
@@ -321,7 +423,7 @@ def get_race_drivers(year: int, round_number: int):
         path = f"data/spark_output/historical/{year}_round{round_number}"
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="No data found.")
-        df = pd.read_parquet(path)
+        df = _load_race_frame(year, round_number)
         df = df.replace({float("nan"): None, float("inf"): None, float("-inf"): None})
         summary = (
             df.groupby("driver_number")
@@ -435,7 +537,7 @@ def get_lap_positions(year: int, round_number: int):
         if not os.path.exists(path):
             return []
 
-        df = pd.read_parquet(path)
+        df = _load_race_frame(year, round_number)
         df = df[["driver_number", "lap_number", "lap_duration"]].copy()
         df = df[df["lap_duration"] > 0].sort_values(["driver_number", "lap_number"])
 
@@ -471,7 +573,7 @@ def get_fastest_laps(year: int, round_number: int):
         if not os.path.exists(path):
             return []
 
-        df = pd.read_parquet(path)
+        df = _load_race_frame(year, round_number)
         # parquet already filters 60 < lap_duration < 200 — all laps are valid race laps
         df = df[df["lap_duration"] > 0]
 
@@ -523,7 +625,7 @@ def get_tyre_strategies(year: int, round_number: int):
         if not os.path.exists(path):
             return []
 
-        df = pd.read_parquet(path)
+        df = _load_race_frame(year, round_number)
         df = df.sort_values(["driver_number", "lap_number"])
 
         # Get driver_number → abbreviation map from Jolpica
@@ -629,6 +731,7 @@ def get_pit_stops(year: int, round_number: int):
                     "time_of_day": p.get("time", ""),
                     "duration_seconds": duration_s,
                     "duration_formatted": p.get("duration", "—"),
+                    "source": "jolpica",
                 })
 
             # Deduplicate
@@ -683,6 +786,7 @@ def get_pit_stops(year: int, round_number: int):
                 "time_of_day": "",
                 "duration_seconds": pit_duration,
                 "duration_formatted": duration_fmt,
+                "source": "fastf1_estimate",
             })
 
         result.sort(key=lambda x: (x["lap"], x["duration_seconds"] or 99))
@@ -691,47 +795,66 @@ def get_pit_stops(year: int, round_number: int):
         logger.warning(f"FastF1 pit stops fallback error: {e}")
         return []
 
-@app.post("/batch/process")
-def run_batch_processor(year: int, round_number: int):
-    def run():
-        from spark_processing.batch_processor import process_historical_session
-        process_historical_session(year=year, round_number=round_number)
+@app.post(
+    "/processing/jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_service_key), Depends(rate_limit("processing", limit=5, window_seconds=300))],
+)
+def create_processing_job(request: ProcessingRequest):
+    race_folder = f"{request.year}_round{request.round_number}"
+    destinations = [
+        settings.DATA_DIR / "spark_output" / "historical" / race_folder,
+        settings.PROJECT_ROOT / "data" / "spark_output" / "historical" / race_folder,
+    ]
+    if any(destination.exists() for destination in destinations):
+        raise HTTPException(status_code=409, detail="That race is already available.")
+    return job_manager.create(request.year, request.round_number)
 
-    threading.Thread(target=run, daemon=True).start()
-    return {
-        "status": "started",
-        "year": year,
-        "round": round_number,
-        "message": f"Processing {year} Round {round_number} in background. Data will appear in ~60 seconds.",
-    }
 
-@app.post("/strategy")
+@app.get(
+    "/processing/jobs/{job_id}",
+    dependencies=[Depends(require_service_key), Depends(rate_limit("job-status", limit=120))],
+)
+def get_processing_job(job_id: str):
+    try:
+        return job_manager.get(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Processing job not found.")
+
+
+@app.post("/batch/process", status_code=status.HTTP_202_ACCEPTED, deprecated=True, dependencies=[Depends(require_service_key)])
+def run_batch_processor(year: int = Query(ge=1950, le=2100), round_number: int = Query(ge=1, le=30)):
+    """Compatibility alias for older clients; returns the tracked job object."""
+    return create_processing_job(ProcessingRequest(year=year, round_number=round_number))
+
+@app.post("/strategy", dependencies=[Depends(require_service_key), Depends(rate_limit("strategy", limit=10))])
 def get_strategy(situation: DriverSituation):
     try:
-        from agents.strategy_agent import analyze_driver_situation
-        result = analyze_driver_situation(**situation.model_dump())
-        return {"driver_number": situation.driver_number, "recommendation": result}
+        from agents.strategy_agent import analyze_driver_situation_detailed
+        result = analyze_driver_situation_detailed(**situation.model_dump())
+        return {"driver_number": situation.driver_number, **result}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Strategy generation failed: {e}")
+        raise HTTPException(status_code=502, detail="Strategy generation is temporarily unavailable.")
 
 
-@app.post("/commentary")
+@app.post("/commentary", dependencies=[Depends(require_service_key), Depends(rate_limit("commentary", limit=20))])
 def get_commentary(req: CommentaryRequest):
     try:
         from agents.commentary_agent import generate_lap_commentary
         result = generate_lap_commentary(**req.model_dump())
         return {"driver_number": req.driver_number, "commentary": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Commentary generation failed: {e}")
+        raise HTTPException(status_code=502, detail="Commentary generation is temporarily unavailable.")
 
 
-@app.get("/rag/search")
-def rag_search(query: str, top_k: int = 5):
+@app.get("/rag/search", dependencies=[Depends(require_service_key), Depends(rate_limit("rag", limit=30))])
+def rag_search(query: str = Query(min_length=3, max_length=500), top_k: int = Query(default=5, ge=1, le=20)):
     try:
         from agents.rag_agent import get_rag_context
         result = get_rag_context(query, top_k=top_k)
         return {"query": query, "context": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"RAG search failed: {e}")
+        raise HTTPException(status_code=502, detail="Historical retrieval is temporarily unavailable.")

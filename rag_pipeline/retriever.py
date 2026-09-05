@@ -11,7 +11,8 @@ def retrieve_similar_situations(
     top_k: int = 5,
     filter_year: int = None,
     filter_driver: int = None,
-    filter_compound: str = None
+    filter_compound: str = None,
+    filter_circuit: str = None,
 ) -> list[dict]:
     query_embedding = embed_text(query)
 
@@ -22,6 +23,8 @@ def retrieve_similar_situations(
         filter_dict["driver_number"] = {"$eq": filter_driver}
     if filter_compound:
         filter_dict["tyre_compound"] = {"$eq": filter_compound}
+    if filter_circuit and filter_circuit.lower() != "unknown":
+        filter_dict["circuit"] = {"$eq": filter_circuit}
 
     results = query_vectors(
         query_embedding=query_embedding,

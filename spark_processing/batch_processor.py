@@ -1,14 +1,18 @@
-import sys, os
+from __future__ import annotations
+
+import os
+import sys
+import uuid
+from pathlib import Path
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 from loguru import logger
-from logger_config import setup_logging
-from pyspark.sql import functions as F
 
 from config import settings
-from spark_processing.spark_session import get_spark_session
-from spark_processing.features import compute_all_features
+from logger_config import setup_logging
+from spark_processing.pandas_features import compute_features_pandas
 
 setup_logging()
 
@@ -16,58 +20,48 @@ setup_logging()
 def process_historical_session(
     year: int,
     round_number: int,
-    output_path: str = "data/spark_output/historical"
+    output_path: str | None = None,
 ) -> pd.DataFrame:
+    """Fetch, enrich, and atomically publish one historical race."""
     from data_ingestion.fastf1_connector import FastF1Connector
 
-    logger.info(f"Processing historical session: {year} Round {round_number}")
+    if not 1950 <= year <= 2100 or not 1 <= round_number <= 30:
+        raise ValueError("year or round_number is outside the supported range")
 
+    logger.info(f"Processing historical session: {year} Round {round_number}")
     connector = FastF1Connector()
     session = connector.load_session(year, round_number, "R")
     laps = connector.get_laps(session)
-
     if not laps:
-        logger.error("No laps found in session")
-        return pd.DataFrame()
+        raise RuntimeError("FastF1 returned no completed laps for this race")
 
-    laps_dicts = [lap.to_dict() for lap in laps]
-    laps_df = pd.DataFrame(laps_dicts)
+    enriched = compute_features_pandas(pd.DataFrame(lap.to_dict() for lap in laps))
+    if enriched.empty:
+        raise RuntimeError("All downloaded laps failed feature-quality validation")
 
-    spark = get_spark_session("F1BatchProcessor")
-    spark_df = spark.createDataFrame(laps_df)
+    base = Path(output_path or settings.DATA_DIR / "spark_output" / "historical").resolve()
+    base.mkdir(parents=True, exist_ok=True)
+    destination = (base / f"{year}_round{round_number}").resolve()
+    if base not in destination.parents:
+        raise ValueError("Refusing to write outside the historical data directory")
+    if destination.exists():
+        raise FileExistsError(f"Race data already exists at {destination}")
 
-    logger.info(f"Loaded {spark_df.count()} laps into Spark")
+    staging = base / f".{destination.name}.tmp-{uuid.uuid4().hex}"
+    try:
+        enriched.to_parquet(staging, partition_cols=["driver_number"], index=False)
+        (staging / "_SUCCESS").write_text("ok\n", encoding="utf-8")
+        staging.rename(destination)
+    except Exception:
+        if staging.exists():
+            import shutil
+            shutil.rmtree(staging)
+        raise
 
-    enriched_df = compute_all_features(spark_df)
-
-    logger.info("Feature summary by driver:")
-    enriched_df.groupBy("driver_number").agg(
-        F.count("lap_number").alias("total_laps"),
-        F.min("lap_duration").alias("fastest_lap"),
-        F.avg("lap_duration").alias("avg_lap_time"),
-        F.avg("tyre_degradation_rate").alias("avg_deg_rate"),
-        F.max("stint_length").alias("longest_stint")
-    ).orderBy("driver_number").show()
-
-    save_path = f"{output_path}/{year}_round{round_number}"
-    os.makedirs(save_path, exist_ok=True)
-    enriched_df.write.mode("overwrite").partitionBy("driver_number").parquet(save_path)
-    logger.success(f"Saved enriched features to {save_path}")
-
-    result = enriched_df.toPandas()
-    spark.stop()
-    return result
+    logger.success(f"Saved {len(enriched)} enriched laps to {destination}")
+    return enriched
 
 
 if __name__ == "__main__":
-    df = process_historical_session(
-        year=settings.REPLAY_YEAR,
-        round_number=settings.REPLAY_ROUND
-    )
-    print(f"\nTotal enriched laps: {len(df)}")
-    print("\nSample enriched lap:")
-    print(df[[
-        "driver_number", "lap_number", "lap_duration",
-        "rolling_avg_lap_time", "lap_delta",
-        "tyre_degradation_rate", "should_pit_soon"
-    ]].head(10).to_string())
+    frame = process_historical_session(settings.REPLAY_YEAR, settings.REPLAY_ROUND)
+    print(f"Total enriched laps: {len(frame)}")

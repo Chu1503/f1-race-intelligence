@@ -1,6 +1,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import httpx
+import time
 from typing import Optional
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -17,6 +18,28 @@ class OpenF1Connector:
             "Accept": "application/json",
             "User-Agent": "F1-Race-Intelligence/1.0"
         })
+        self._stint_cache: dict[int, tuple[float, list[dict]]] = {}
+
+    def _get_stints(self, session_key: int, max_age_seconds: float = 10.0) -> list[dict]:
+        cached = self._stint_cache.get(session_key)
+        now = time.monotonic()
+        if cached and now - cached[0] < max_age_seconds:
+            return cached[1]
+        stints = self._get("stints", params={"session_key": session_key})
+        self._stint_cache[session_key] = (now, stints)
+        return stints
+
+    @staticmethod
+    def _stint_for_lap(stints: list[dict], driver_number: int, lap_number: int) -> Optional[dict]:
+        for stint in stints:
+            if int(stint.get("driver_number", -1)) != driver_number:
+                continue
+            start = int(stint.get("lap_start") or 0)
+            end_raw = stint.get("lap_end")
+            end = int(end_raw) if end_raw is not None else 10_000
+            if start <= lap_number <= end:
+                return stint
+        return None
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
     def _get(self, endpoint: str, params: dict = None) -> list[dict]:
@@ -157,18 +180,29 @@ class OpenF1Connector:
             params["lap_number"] = lap_number
 
         data = self._get("laps", params=params)
+        # OpenF1 exposes compound and tyre age on /stints, not /laps. Joining
+        # here keeps the normalized LapData contract correct for all consumers.
+        stints = self._get_stints(session_key)
         laps = []
         for lap in data:
+            number = int(lap["driver_number"])
+            completed_lap = int(lap["lap_number"])
+            stint = self._stint_for_lap(stints, number, completed_lap)
+            age_at_start = stint.get("tyre_age_at_start") if stint else None
+            lap_start = int(stint.get("lap_start") or completed_lap) if stint else completed_lap
+            tyre_age = None
+            if age_at_start is not None:
+                tyre_age = max(0, int(age_at_start) + completed_lap - lap_start)
             laps.append(LapData(
                 session_key=session_key,
-                driver_number=lap["driver_number"],
-                lap_number=lap["lap_number"],
+                driver_number=number,
+                lap_number=completed_lap,
                 lap_duration=lap.get("lap_duration"),
                 sector_1_time=lap.get("duration_sector_1"),
                 sector_2_time=lap.get("duration_sector_2"),
                 sector_3_time=lap.get("duration_sector_3"),
-                tyre_compound=lap.get("compound"),
-                tyre_age_laps=lap.get("tyre_age_at_start"),
+                tyre_compound=stint.get("compound") if stint else None,
+                tyre_age_laps=tyre_age,
                 is_pit_out_lap=lap.get("is_pit_out_lap", False),
                 is_pit_in_lap=False,
                 source="openf1"
@@ -212,21 +246,26 @@ class OpenF1Connector:
                 driver_number=p["driver_number"],
                 lap_number=p.get("lap_number", 0),
                 pit_duration=p.get("pit_duration"),
-                tyre_compound_new=None,  # joined with stint data in Spark
+                tyre_compound_new=(
+                    (self._stint_for_lap(self._get_stints(session_key), int(p["driver_number"]), int(p.get("lap_number", 0)) + 1) or {}).get("compound")
+                ),
                 timestamp=p.get("date", ""),
                 source="openf1"
             ))
         return pits
 
     def get_latest_laps_since(
-        self, session_key: int, after_lap: int
+        self, session_key: int, watermarks: dict[int, int]
     ) -> list[LapData]:
         """
         Poll for new laps since the last one we processed.
         This is what the Ingestion Agent calls in a loop during live races.
         """
         all_laps = self.get_laps(session_key=session_key)
-        new_laps = [lap for lap in all_laps if lap.lap_number > after_lap]
+        new_laps = [
+            lap for lap in all_laps
+            if lap.lap_number > watermarks.get(lap.driver_number, 0)
+        ]
         if new_laps:
             logger.info(
                 f"Found {len(new_laps)} new laps "

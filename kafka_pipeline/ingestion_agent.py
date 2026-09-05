@@ -34,7 +34,8 @@ class IngestionAgent:
         self.producer = F1KafkaProducer()
         self.openf1 = OpenF1Connector()
         self.fastf1 = FastF1Connector()
-        self._last_lap_number = 0
+        self._lap_watermarks: dict[int, int] = {}
+        self._published_pit_keys: set[tuple[int, int, int]] = set()
         self._published_laps = 0
         self._published_pits = 0
 
@@ -68,13 +69,14 @@ class IngestionAgent:
             try:
                 # Fetch only new laps since last poll
                 new_laps = self.openf1.get_latest_laps_since(
-                    session_key, self._last_lap_number
+                    session_key, self._lap_watermarks
                 )
                 for lap in new_laps:
                     self.producer.publish_lap(lap)
                     self._published_laps += 1
-                    if lap.lap_number > self._last_lap_number:
-                        self._last_lap_number = lap.lap_number
+                    self._lap_watermarks[lap.driver_number] = max(
+                        lap.lap_number, self._lap_watermarks.get(lap.driver_number, 0)
+                    )
 
                 # Fetch current positions
                 positions = self.openf1.get_positions(session_key)
@@ -84,12 +86,16 @@ class IngestionAgent:
                 # Fetch pit stops
                 pits = self.openf1.get_pit_stops(session_key)
                 for pit in pits:
+                    key = (pit.session_key, pit.driver_number, pit.lap_number)
+                    if key in self._published_pit_keys:
+                        continue
                     self.producer.publish_pit_stop(pit)
+                    self._published_pit_keys.add(key)
                     self._published_pits += 1
 
                 if new_laps:
                     logger.info(
-                        f"Lap {self._last_lap_number} | "
+                        f"Lap {max(self._lap_watermarks.values(), default=0)} | "
                         f"+{len(new_laps)} laps | "
                         f"{len(pits)} total pit stops | "
                         f"{len(positions)} positions published"

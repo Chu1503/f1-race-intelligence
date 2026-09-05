@@ -1,172 +1,94 @@
-// const API = "http://localhost:8000";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Retries up to `attempts` times with exponential backoff and a per-request timeout.
-async function fetchWithRetry(
-  url: string,
-  options?: RequestInit,
-  attempts = 2,
-  timeoutMs = 8_000
-): Promise<Response> {
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly retryAfter?: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function fetchWithRetry(url: string, options?: RequestInit, attempts = 2, timeoutMs = 8_000): Promise<Response> {
   let lastError: unknown;
-  for (let i = 0; i < attempts; i++) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(url, { ...options, signal: controller.signal });
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    } finally {
       clearTimeout(timer);
-      return res;
-    } catch (err) {
-      lastError = err;
-      if (i < attempts - 1) {
-        await new Promise(r => setTimeout(r, 500));
-      }
     }
   }
-  throw lastError;
+  if (lastError instanceof DOMException && lastError.name === "AbortError") {
+    throw new ApiError("The data service timed out. Please try again.", 408);
+  }
+  throw new ApiError("The data service is unreachable. Please try again.", 0);
 }
 
-// ── API functions ──────────────────────────────────────────────────────────
+async function requestJson<T>(url: string, options?: RequestInit, attempts = 2, timeoutMs = 8_000): Promise<T> {
+  const response = await fetchWithRetry(url, options, attempts, timeoutMs);
+  const body = await response.json().catch(() => ({})) as { detail?: string; message?: string };
+  if (!response.ok) {
+    throw new ApiError(
+      body.detail || body.message || `Request failed (${response.status})`,
+      response.status,
+      Number(response.headers.get("retry-after")) || undefined,
+    );
+  }
+  return body as T;
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+}
+
+export interface AvailableRace { year: number; round: number }
+export interface ProcessingJob {
+  id: string;
+  year: number;
+  round_number: number;
+  status: "queued" | "running" | "succeeded" | "failed";
+  message: string;
+  error?: string | null;
+  rows_written?: number | null;
+}
 
 export async function pingHealth(): Promise<boolean> {
-  try {
-    const res = await fetchWithRetry(`${API}/health`, undefined, 1, 10_000);
-    return res.ok;
-  } catch { return false; }
+  try { return (await fetchWithRetry(`${API}/health`, undefined, 1, 10_000)).ok; }
+  catch { return false; }
 }
+export const getAvailableRaces = () => requestJson<{ races: AvailableRace[] }>(`${API}/available-races`);
+export const getSeasons = () => requestJson<{ seasons: number[] }>(`${API}/seasons`);
+export const getCalendar = (year: number) => requestJson<{ year: number; races: import("./constants").CalendarRace[] }>(`${API}/calendar/${year}`);
+export const getDriversForYear = (year: number) => requestJson<{ year: number; drivers: DriverInfo[] }>(`${API}/drivers/${year}`);
+export const getLaps = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/laps`);
+export const getRaceDriverStats = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/drivers`);
+export const getRaceResults = <T = unknown>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/results`);
+export const getRaceIncidents = <T = unknown>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/incidents`);
+export const getLapPositions = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/lap-positions`);
+export const getFastestLaps = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/fastest-laps`);
+export const getTyreStrategies = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/tyre-strategies`);
+export const getPitStops = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/pit-stops`);
 
-export async function getAvailableRaces() {
-  try {
-    const res = await fetchWithRetry(`${API}/available-races`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getSeasons() {
-  try {
-    const res = await fetchWithRetry(`${API}/seasons`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getCalendar(year: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/calendar/${year}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getDriversForYear(year: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/drivers/${year}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getLaps(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/laps`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getRaceDriverStats(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/drivers`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getRaceResults(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/results`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getRaceIncidents(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/incidents`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getLapPositions(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/lap-positions`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getFastestLaps(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/fastest-laps`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getTyreStrategies(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/tyre-strategies`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getPitStops(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(`${API}/race/${year}/${round}/pit-stops`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function runBatchProcessor(year: number, round: number) {
-  try {
-    const res = await fetchWithRetry(
-      `${API}/batch/process?year=${year}&round_number=${round}`,
-      { method: "POST" }
-    );
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getStrategy(payload: object) {
-  try {
-    const res = await fetchWithRetry(`${API}/strategy`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }, 1, 90_000); // 1 attempt, 90s timeout — LLM + cold start on Render
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export async function getCommentary(payload: object) {
-  try {
-    const res = await fetchWithRetry(`${API}/commentary`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }, 1, 90_000); // 1 attempt, 90s timeout — LLM + cold start on Render
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-export type { };
+export const runBatchProcessor = (year: number, roundNumber: number) => requestJson<ProcessingJob>(
+  "/api/processing/jobs",
+  { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year, round_number: roundNumber }) },
+  1,
+  30_000,
+);
+export const getProcessingJob = (jobId: string) => requestJson<ProcessingJob>(`/api/processing/jobs/${encodeURIComponent(jobId)}`, undefined, 1, 15_000);
+export const getStrategy = <T = { recommendation: string; rag_sources?: unknown[] }>(payload: object) => requestJson<T>(
+  "/api/ai/strategy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }, 1, 120_000,
+);
+export const getCommentary = <T = { commentary: string }>(payload: object) => requestJson<T>(
+  "/api/ai/commentary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }, 1, 120_000,
+);
 
 export interface DriverInfo {
   driver_number: number;

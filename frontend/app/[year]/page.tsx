@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { getCalendar, getAvailableRaces, runBatchProcessor } from "../../lib/api";
+import { errorMessage, getCalendar, getAvailableRaces, getProcessingJob, runBatchProcessor } from "../../lib/api";
 import { getFlag, type CalendarRace } from "../../lib/constants";
 import { ArrowRight, ArrowLeft } from "lucide-react";
+import Image from "next/image";
 
 const C = {
   black: "#080808",
@@ -33,41 +34,54 @@ export default function SeasonPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const mounted = useRef(true);
   const accentColor = yearColors[year] || C.red;
 
   useEffect(() => {
+    mounted.current = true;
     Promise.all([getCalendar(year), getAvailableRaces()]).then(
       ([cal, avail]) => {
         setCalendar(cal?.races || []);
         const set = new Set<number>(
           (avail?.races || [])
-            .filter((r: any) => r.year === year)
-            .map((r: any) => r.round)
+            .filter((r) => r.year === year)
+            .map((r) => r.round)
         );
         setAvailable(set);
         setLoading(false);
       }
-    );
+    ).catch((reason) => {
+      setError(errorMessage(reason));
+      setLoading(false);
+    });
+    return () => { mounted.current = false; };
   }, [year]);
 
   const handleLoad = async (e: React.MouseEvent, round: number) => {
     e.stopPropagation();
     setProcessing(round);
-    await runBatchProcessor(year, round);
-    const poll = setInterval(async () => {
-      const avail = await getAvailableRaces();
-      const set = new Set<number>(
-        (avail?.races || [])
-          .filter((r: any) => r.year === year)
-          .map((r: any) => r.round)
-      );
-      setAvailable(set);
-      if (set.has(round)) {
-        clearInterval(poll);
-        setProcessing(null);
-        router.push(`/${year}/${round}`);
+    setError("");
+    try {
+      const created = await runBatchProcessor(year, round);
+      for (let attempt = 0; attempt < 200 && mounted.current; attempt += 1) {
+        const job = await getProcessingJob(created.id);
+        if (job.status === "succeeded") {
+          setAvailable((current) => new Set(current).add(round));
+          setProcessing(null);
+          router.push(`/${year}/${round}`);
+          return;
+        }
+        if (job.status === "failed") throw new Error(job.error || job.message);
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
       }
-    }, 10000);
+      throw new Error("Processing is taking longer than expected. The job remains tracked; refresh to check again.");
+    } catch (reason) {
+      if (mounted.current) {
+        setError(errorMessage(reason));
+        setProcessing(null);
+      }
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -93,7 +107,7 @@ export default function SeasonPage() {
           zIndex: 50,
         }}
       >
-        <div
+        <div className="site-header-inner"
           style={{
             maxWidth: 1400,
             margin: "0 auto",
@@ -130,7 +144,7 @@ export default function SeasonPage() {
 
           <div style={{ width: 1, height: 24, background: C.border }} />
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="site-header-title" style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
               style={{
                 background: accentColor,
@@ -158,7 +172,7 @@ export default function SeasonPage() {
             </div>
           </div>
 
-          <div style={{ marginLeft: "auto" }}>
+          <div className="site-header-status" style={{ marginLeft: "auto" }}>
             <div
               style={{
                 display: "flex",
@@ -195,6 +209,7 @@ export default function SeasonPage() {
       </header>
 
       <main style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 28px" }}>
+        {error && <div role="alert" className="api-error">{error}</div>}
         <div style={{ marginBottom: 36 }}>
           <div
             style={{
@@ -294,6 +309,15 @@ export default function SeasonPage() {
                     onClick={() =>
                       isLoaded && router.push(`/${year}/${race.round}`)
                     }
+                    onKeyDown={(event) => {
+                      if (isLoaded && (event.key === "Enter" || event.key === " ")) {
+                        event.preventDefault();
+                        router.push(`/${year}/${race.round}`);
+                      }
+                    }}
+                    role={isLoaded ? "link" : undefined}
+                    tabIndex={isLoaded ? 0 : undefined}
+                    aria-label={isLoaded ? `Open ${race.full_name}` : undefined}
                     onMouseEnter={() => setHovered(race.round)}
                     onMouseLeave={() => setHovered(null)}
                     style={{
@@ -362,9 +386,12 @@ export default function SeasonPage() {
                             background: "#1a1a1a",
                           }}
                         >
-                          <img
+                          <Image
                             src={`https://flagcdn.com/w80/${flag}.png`}
                             alt={race.country}
+                            width={48}
+                            height={30}
+                            unoptimized
                             style={{
                               width: "100%",
                               height: "100%",

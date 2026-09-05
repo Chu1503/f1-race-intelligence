@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getSeasons, getAvailableRaces, pingHealth } from "../lib/api";
+import { errorMessage, getSeasons, getAvailableRaces, pingHealth } from "../lib/api";
 
 const C = {
   black: "#080808",
@@ -22,45 +22,42 @@ export default function HomePage() {
   );
   const [hovered, setHovered] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
   const [waking, setWaking] = useState(false);
   const [wakeMsg, setWakeMsg] = useState("");
 
   useEffect(() => {
     Promise.all([getSeasons(), getAvailableRaces()]).then(([s, a]) => {
-      if (!s && !a) {
-        setError(true);
-      } else {
-        setSeasons(s?.seasons || []);
-        setAvailable(a?.races || []);
-      }
+      setSeasons(s.seasons);
+      setAvailable(a.races);
       setLoading(false);
-    });
+    }).catch((reason) => { setError(errorMessage(reason)); setLoading(false); });
   }, []);
 
   const handleWakeUp = async () => {
     setWaking(true);
     setWakeMsg("Sending wake-up ping…");
     let alive = false;
-    for (let i = 0; i < 14; i++) {
+    const started = Date.now();
+    while (Date.now() - started < 90_000) {
       alive = await pingHealth();
       if (alive) break;
-      setWakeMsg(`Server is starting up… (${(i + 1) * 5}s)`);
+      setWakeMsg(`Server is starting up… (${Math.round((Date.now() - started) / 1000)}s)`);
       await new Promise((r) => setTimeout(r, 5000));
     }
     if (!alive) {
-      setWakeMsg("Server didn't respond after 70s. Try refreshing.");
+      setWakeMsg("Server didn't respond after 90s. Try refreshing.");
       setWaking(false);
       return;
     }
     setWakeMsg("Server is up! Loading data…");
-    const [s, a] = await Promise.all([getSeasons(), getAvailableRaces()]);
-    if (s || a) {
-      setSeasons(s?.seasons || []);
-      setAvailable(a?.races || []);
-      setError(false);
-    } else {
-      setWakeMsg("Server responded but data failed. Try refreshing.");
+    try {
+      const [s, a] = await Promise.all([getSeasons(), getAvailableRaces()]);
+      setSeasons(s.seasons);
+      setAvailable(a.races);
+      setError("");
+    } catch (reason) {
+      setWakeMsg(errorMessage(reason));
     }
     setWaking(false);
   };
@@ -94,7 +91,7 @@ export default function HomePage() {
           zIndex: 50,
         }}
       >
-        <div
+        <div className="site-header-inner"
           style={{
             maxWidth: 1200,
             margin: "0 auto",
@@ -218,8 +215,8 @@ export default function HomePage() {
             }}
           >
             Explore every Grand Prix with lap-by-lap telemetry, tyre strategies,
-            AI race analysis, and live commentary powered by Apache Spark and
-            CrewAI.
+            AI race analysis and generated commentary over validated historical
+            race data. Live mode is shown only when a processed OpenF1 session is connected.
           </p>
         </div>
 
@@ -275,11 +272,10 @@ export default function HomePage() {
                 marginBottom: 8,
               }}
             >
-              Backend is sleeping
+              Data service unavailable
             </div>
             <p style={{ color: C.text2, fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
-              The API server spins down after inactivity (Render free tier).
-              Click below to wake it up.
+              {error} You can retry the health check below.
             </p>
             {wakeMsg && (
               <div

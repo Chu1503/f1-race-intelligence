@@ -30,13 +30,13 @@ strategy_agent = Agent(
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def _fetch_rag_context(rag_query: str) -> str:
+def _fetch_rag_context(rag_query: str, circuit_name: str) -> dict:
     """Runs in a thread so we can enforce a hard wall-clock timeout."""
-    from agents.rag_agent import get_rag_context
-    return get_rag_context(rag_query, top_k=3)
+    from agents.rag_agent import get_rag_context_with_sources
+    return get_rag_context_with_sources(rag_query, top_k=3, circuit_name=circuit_name)
 
 
-def analyze_driver_situation(
+def analyze_driver_situation_detailed(
     driver_number: int,
     lap_number: int,
     lap_duration: float,
@@ -51,7 +51,7 @@ def analyze_driver_situation(
     gap_to_leader: float = None,
     circuit_name: str = "unknown",
     total_race_laps: int = 57,
-) -> str:
+) -> dict:
 
     deg_rate = tyre_degradation_rate or 0.0
     rolling_avg = rolling_avg_lap_time or lap_duration
@@ -65,12 +65,17 @@ def analyze_driver_situation(
         f"circuit {circuit_name} lap {lap_number}"
     )
     historical_context = "No historical context available."
+    rag_sources = []
+    executor = ThreadPoolExecutor(max_workers=1)
     try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_fetch_rag_context, rag_query)
-            historical_context = future.result(timeout=5)
+        future = executor.submit(_fetch_rag_context, rag_query, circuit_name)
+        rag_result = future.result(timeout=5)
+        historical_context = rag_result["context"]
+        rag_sources = rag_result["sources"]
     except (FuturesTimeout, Exception):
         pass
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
     # ──────────────────────────────────────────────────────────────────────
 
     pit_model_note = (
@@ -107,4 +112,13 @@ Give a clear call: pit now, stay out, or pit next lap. Say what tyre to go on ne
     )
 
     crew = Crew(agents=[strategy_agent], tasks=[task], verbose=False)
-    return str(crew.kickoff())
+    return {
+        "recommendation": str(crew.kickoff()),
+        "rag_sources": rag_sources,
+        "rag_scope": "same-circuit" if circuit_name.lower() != "unknown" else "unfiltered",
+    }
+
+
+def analyze_driver_situation(**kwargs) -> str:
+    """Backwards-compatible text-only interface used by local scripts."""
+    return analyze_driver_situation_detailed(**kwargs)["recommendation"]

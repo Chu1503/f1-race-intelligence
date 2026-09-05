@@ -4,14 +4,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pinecone import Pinecone, ServerlessSpec
 from loguru import logger
 from config import settings
+from functools import lru_cache
 
 INDEX_NAME = "f1-race-intelligence"
 DIMENSION = 1024  # voyage-2 embedding dimension
 METRIC = "cosine"
 
+@lru_cache(maxsize=1)
 def get_pinecone_client() -> Pinecone:
+    if not settings.PINECONE_API_KEY:
+        raise RuntimeError("PINECONE_API_KEY is not configured")
     return Pinecone(api_key=settings.PINECONE_API_KEY)
 
+@lru_cache(maxsize=1)
 def get_or_create_index():
     pc = get_pinecone_client()
     existing = [idx.name for idx in pc.list_indexes()]
@@ -31,13 +36,13 @@ def get_or_create_index():
     return pc.Index(INDEX_NAME)
 
 
-def upsert_vectors(vectors: list[dict]) -> int:
+def upsert_vectors(vectors: list[dict], namespace: str | None = None) -> int:
     index = get_or_create_index()
     batch_size = 100
     total = 0
     for i in range(0, len(vectors), batch_size):
         batch = vectors[i:i + batch_size]
-        index.upsert(vectors=batch)
+        index.upsert(vectors=batch, namespace=namespace or settings.RAG_NAMESPACE)
         total += len(batch)
         logger.info(f"Upserted {total}/{len(vectors)} vectors")
     return total
@@ -46,14 +51,16 @@ def upsert_vectors(vectors: list[dict]) -> int:
 def query_vectors(
     query_embedding: list[float],
     top_k: int = 5,
-    filter: dict = None
+    filter: dict = None,
+    namespace: str | None = None,
 ) -> list[dict]:
     index = get_or_create_index()
     results = index.query(
         vector=query_embedding,
         top_k=top_k,
         include_metadata=True,
-        filter=filter
+        filter=filter,
+        namespace=namespace or settings.RAG_NAMESPACE,
     )
     return [
         {

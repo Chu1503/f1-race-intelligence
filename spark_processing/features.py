@@ -69,7 +69,7 @@ def add_tyre_degradation_rate(df: DataFrame) -> DataFrame:
     df = df.withColumn(
         "tyre_degradation_rate",
         F.when(
-            (F.col("tyre_degradation_rate_raw") >= -0.5) &
+            (F.col("tyre_degradation_rate_raw") >= 0.0) &
             (F.col("tyre_degradation_rate_raw") <= 1.5),
             F.col("tyre_degradation_rate_raw")
         ).otherwise(F.lit(0.0).cast(FloatType()))
@@ -90,7 +90,7 @@ def add_stint_length(df: DataFrame) -> DataFrame:
             F.col("tyre_age_laps")
         ).otherwise(
             F.row_number().over(
-                Window.partitionBy("driver_number", "tyre_compound")
+                Window.partitionBy("driver_number", "stint_number")
                 .orderBy("lap_number")
             )
         )
@@ -139,10 +139,17 @@ def compute_all_features(df: DataFrame) -> DataFrame:
         F.lag("tyre_age_laps").over(stint_detect_window)
     )
     df = df.withColumn(
+        "prev_tyre_compound",
+        F.lag("tyre_compound").over(stint_detect_window)
+    )
+    df = df.withColumn(
         "is_new_stint",
         F.when(
             (F.col("prev_tyre_age").isNotNull()) &
-            (F.col("tyre_age_laps") < F.col("prev_tyre_age")),
+            (
+                (F.col("tyre_age_laps") < F.col("prev_tyre_age")) |
+                (F.col("tyre_compound") != F.col("prev_tyre_compound"))
+            ),
             F.lit(1)
         ).otherwise(F.lit(0))
     )

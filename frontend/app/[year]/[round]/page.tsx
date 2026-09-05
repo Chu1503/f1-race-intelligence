@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import {
@@ -17,104 +17,16 @@ import {
   // getTeamLogo,
   TYRE_COLORS,
   getTeamColor,
-  type CalendarRace,
   type SessionDriver,
 } from "../../../lib/constants";
 import {
-  getCalendar,
-  getLaps,
-  getRaceDriverStats,
-  getDriversForYear,
-  getRaceResults,
-  getRaceIncidents,
-  getLapPositions,
-  getFastestLaps,
-  getTyreStrategies,
-  getPitStops,
+  errorMessage,
   getStrategy,
   getCommentary,
-  type DriverInfo,
 } from "../../../lib/api";
-
-// ── Types ──────────────────────────────────────────────────────────────────
-interface LapRow {
-  driver_number: number;
-  lap_number: number;
-  lap_duration: number;
-  tyre_compound: string;
-  tyre_age_laps: number;
-  tyre_degradation_rate: number;
-  rolling_avg_lap_time: number;
-  lap_delta: number;
-  should_pit_soon: boolean;
-  estimated_laps_to_pit: number;
-  stint_length: number;
-}
-interface DriverStat {
-  driver_number: number;
-  total_laps: number;
-  fastest_lap: number;
-  avg_lap_time: number;
-  avg_deg_rate: number;
-  pit_flags: number;
-}
-interface RaceResult {
-  driver_number: number;
-  abbreviation: string;
-  full_name: string;
-  team: string;
-  team_color: string;
-  grid_position: number | null;
-  finish_position: number | null;
-  status: string;
-  points: number;
-  laps_completed: number;
-  time: string;
-  fastest_lap_time: string;
-  fastest_lap_rank: number | null;
-}
-interface Incident {
-  status: string;
-  label: string;
-}
-interface LapPosition {
-  Driver: string;
-  DriverNumber: number;
-  LapNumber: number;
-  Position: number;
-}
-interface FastestLap {
-  driver_number: number;
-  driver_code: string;
-  lap_number: number;
-  lap_time_seconds: number;
-  lap_time_formatted: string;
-  avg_speed_kph: number;
-  tyre_compound: string;
-  rank: number;
-}
-interface Stint {
-  stint: number;
-  compound: string;
-  start_lap: number;
-  end_lap: number;
-  lap_count: number;
-}
-interface TyreStrategy {
-  driver_number: number;
-  driver_code: string;
-  stints: Stint[];
-}
-interface PitStop {
-  driver_number: number;
-  driver_id: string;
-  driver_code: string;
-  stop_number: number;
-  lap: number;
-  duration_seconds: number | null;
-  duration_formatted: string;
-  sd?: SessionDriver;
-}
+import { useRaceData } from "../../../hooks/use-race-data";
+import type { LapPosition, PitStop, RaceResult, TyreStrategy } from "../../../components/race/types";
+import { AiStrategyTab, CommentaryTab, FastestLapsTab, LapChartTab, LapTimesTab, PitStopsTab, ResultsTab, TyreDegradationTab, TyreStrategyTab } from "../../../components/race/tabs/TabPanels";
 
 // ── Tokens ─────────────────────────────────────────────────────────────────
 const C = {
@@ -228,7 +140,7 @@ function SectionTitle({
       >
         {children}
       </div>
-      {/* {sub && (
+      {sub && (
         <div
           style={{
             fontSize: 14,
@@ -239,7 +151,7 @@ function SectionTitle({
         >
           {sub}
         </div>
-      )} */}
+      )}
     </div>
   );
 }
@@ -444,6 +356,7 @@ function DriverBadge({
   const color = sd?.color || "#555";
   return (
     <button
+      aria-pressed={active}
       onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
@@ -525,7 +438,8 @@ function DriverBadge({
     </button>
   );
 }
-function ChartTooltip({ active, payload, label }: any) {
+interface ChartTooltipEntry { color?: string; name?: string; dataKey?: string; value?: number | string }
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: ChartTooltipEntry[]; label?: number | string }) {
   if (!active || !payload?.length) return null;
   return (
     <div
@@ -550,7 +464,7 @@ function ChartTooltip({ active, payload, label }: any) {
       >
         LAP {label}
       </div>
-      {payload.map((p: any, i: number) => (
+      {payload.map((p, i) => (
         <div
           key={i}
           style={{
@@ -595,6 +509,8 @@ function TabBtn({
   const [hov, setHov] = useState(false);
   return (
     <button
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
@@ -753,13 +669,11 @@ function InfoRow({
 // IMPORTANT: the header must have the same structure: [60px spacer] + [same grid]
 function F1Row({
   pos,
-  posColor,
   rowColor,
   cols,
   children,
 }: {
   pos: React.ReactNode;
-  posColor?: string;
   rowColor: string;
   cols: string;
   children: React.ReactNode;
@@ -860,9 +774,10 @@ function DriverName({
   bgColor: string;
 }) {
   const fg = textOn(bgColor);
-  const sub_ = subOn(bgColor);
+  const subColor = subOn(bgColor);
   return (
     <div
+      title={team}
       style={{
         display: "flex",
         alignItems: "center",
@@ -918,13 +833,13 @@ function DriverName({
         >
           {full}
         </div>
-        {/* {sub && (
+        {sub && (
           <div
             style={{
               fontFamily: "'Barlow Condensed',sans-serif",
               fontSize: 12,
               letterSpacing: "0.10em",
-              color: sub_,
+              color: subColor,
               marginTop: 3,
               textTransform: "uppercase",
               whiteSpace: "nowrap",
@@ -932,7 +847,7 @@ function DriverName({
           >
             {sub}
           </div>
-        )} */}
+        )}
       </div>
     </div>
   );
@@ -978,14 +893,12 @@ function TyreStrategyChart({
   results,
   maxLap,
   selectedDrivers,
-  accent,
 }: {
   strategies: TyreStrategy[];
   sdByNum: Record<number, SessionDriver>;
   results: RaceResult[];
   maxLap: number;
   selectedDrivers: number[];
-  accent: string;
 }) {
   const filtered = strategies.filter((s) =>
     selectedDrivers.includes(s.driver_number)
@@ -1164,7 +1077,7 @@ function LapPositionChart({
   const maxLap = Math.max(...positions.map((p) => p.LapNumber));
   const data = Array.from({ length: maxLap }, (_, i) => {
     const lap = i + 1;
-    const row: any = { lap };
+    const row: Record<string, number | null> = { lap };
     for (const num of nums) {
       const sd = sdByNum[num];
       const key = sd?.code || `D${num}`;
@@ -1248,17 +1161,7 @@ export default function RacePage() {
   const round = Number(params.round);
   const accent = yearColors[year] || C.red;
 
-  const [calendar, setCalendar] = useState<CalendarRace[]>([]);
-  const [laps, setLaps] = useState<LapRow[] | null>(null);
-  const [driverStats, setDriverStats] = useState<DriverStat[]>([]);
-  const [jolpicaByCode, setJolpica] = useState<Record<string, DriverInfo>>({});
-  const [sdByNum, setSdByNum] = useState<Record<number, SessionDriver>>({});
-  const [results, setResults] = useState<RaceResult[]>([]);
-  const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [lapPositions, setLapPos] = useState<LapPosition[]>([]);
-  const [fastestLaps, setFastestLaps] = useState<FastestLap[]>([]);
-  const [tyreStrategies, setTyreStrats] = useState<TyreStrategy[]>([]);
-  const [pitStops, setPitStops] = useState<PitStop[]>([]);
+  const { calendar, laps, driverStats, results, incidents, lapPositions, fastestLaps, tyreStrategies, pitStops, sdByNum, loading: dataLoading, error: dataError, retry: load } = useRaceData(year, round);
   const [selectedDrivers, setSelected] = useState<number[]>([]);
   const [tab, setTab] = useState<
     | "laps"
@@ -1271,7 +1174,6 @@ export default function RacePage() {
     | "ai-strategy"
     | "commentary"
   >("laps");
-  const [dataLoading, setDataLoading] = useState(true);
   const [stratDriver, setStratDriver] = useState(0);
   const [stratLap, setStratLap] = useState(30);
   const [stratResult, setStratResult] = useState("");
@@ -1283,126 +1185,13 @@ export default function RacePage() {
   for (const r of results)
     resultStatusMap[r.driver_number] = statusLabel(r.status);
 
-  function buildSdMap(
-    fl: FastestLap[],
-    pos: LapPosition[],
-    ts: TyreStrategy[],
-    jolpica: Record<string, DriverInfo>,
-    raceResults: RaceResult[]
-  ): Record<number, SessionDriver> {
-    const map: Record<number, SessionDriver> = {};
-
-    // Build code→result lookup from Jolpica (accurate name/team)
-    const resultByCode: Record<string, RaceResult> = {};
-    for (const r of raceResults) resultByCode[r.abbreviation] = r;
-
-    // Seed from Jolpica race results first — always available, no FastF1 needed
-    for (const r of raceResults) {
-      if (r.driver_number) {
-        map[r.driver_number] = {
-          race_number: r.driver_number,
-          code: r.abbreviation,
-          full_name: r.full_name,
-          team: r.team,
-          color: getTeamColor(r.team),
-        };
-      }
-    }
-
-    // Supplement/override with FastF1 sources (lap positions, tyre strategies)
-    // These have the correct car numbers for the session and may differ for subs
-    const pairs: { num: number; code: string }[] = [];
-    for (const f of fl)
-      pairs.push({ num: f.driver_number, code: f.driver_code });
-    for (const p of pos)
-      if (!pairs.find((x) => x.num === p.DriverNumber))
-        pairs.push({ num: p.DriverNumber, code: p.Driver });
-    for (const t of ts)
-      if (!pairs.find((x) => x.num === t.driver_number))
-        pairs.push({ num: t.driver_number, code: t.driver_code });
-
-    for (const { num, code } of pairs) {
-      const fromResult = resultByCode[code];
-      map[num] = {
-        race_number: num,
-        code,
-        full_name: fromResult?.full_name || jolpica[code]?.full_name || map[num]?.full_name || code,
-        team: fromResult?.team || jolpica[code]?.team || map[num]?.team || "",
-        color: getTeamColor(fromResult?.team || jolpica[code]?.team || map[num]?.team || ""),
-      };
-    }
-
-    return map;
-  }
-
   useEffect(() => {
-    Promise.all([getCalendar(year), getDriversForYear(year)]).then(
-      ([cal, dd]) => {
-        setCalendar(cal?.races || []);
-        if (dd?.drivers) {
-          const m: Record<string, DriverInfo> = {};
-          for (const d of dd.drivers) m[d.code] = d;
-          setJolpica(m);
-        }
-      }
-    );
-  }, [year]);
-
-  const load = useCallback(async () => {
-    setDataLoading(true);
-    setLaps(null);
-    setDriverStats([]);
-    setResults([]);
-    setIncidents([]);
-    setLapPos([]);
-    setFastestLaps([]);
-    setTyreStrats([]);
-    setPitStops([]);
-    setSdByNum({});
-    const [l, s, res, inc, pos, fl, ts, ps] = await Promise.all([
-      getLaps(year, round),
-      getRaceDriverStats(year, round),
-      getRaceResults(year, round),
-      getRaceIncidents(year, round),
-      getLapPositions(year, round),
-      getFastestLaps(year, round),
-      getTyreStrategies(year, round),
-      getPitStops(year, round),
-    ]);
-    setLaps(l);
-    setDriverStats(s || []);
-    setResults(res?.results || []);
-    setIncidents(inc?.incidents || []);
-    setLapPos(Array.isArray(pos) ? pos : []);
-    setFastestLaps(Array.isArray(fl) ? fl : []);
-    setTyreStrats(Array.isArray(ts) ? ts : []);
-    setPitStops(Array.isArray(ps) ? ps : []);
-    if (l?.length) {
-      const nums = [
-        ...new Set(l.map((x: LapRow) => x.driver_number)),
-      ] as number[];
-      setSelected(nums.slice(0, 5));
-      setStratDriver(nums[0]);
-      setStratLap(
-        Math.floor(Math.max(...l.map((x: LapRow) => x.lap_number)) / 2)
-      );
-    }
-    setDataLoading(false);
-  }, [year, round]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-  useEffect(() => {
-    const m = buildSdMap(
-      fastestLaps,
-      lapPositions,
-      tyreStrategies,
-      jolpicaByCode,
-      results
-    );
-    if (Object.keys(m).length > 0) setSdByNum(m);
-  }, [fastestLaps, lapPositions, tyreStrategies, jolpicaByCode, results]);
+    if (!laps?.length) return;
+    const nums = [...new Set(laps.map((lap) => lap.driver_number))];
+    setSelected(nums.slice(0, 5));
+    setStratDriver(nums[0]);
+    setStratLap(Math.floor(Math.max(...laps.map((lap) => lap.lap_number)) / 2));
+  }, [laps]);
 
   const handleStrategy = async () => {
     if (!laps) return;
@@ -1417,7 +1206,10 @@ export default function RacePage() {
         return;
       }
       const circuitName =
-        calendar.find((c) => c.round === round)?.name || "Unknown";
+        calendar.find((c) => c.round === round)?.circuit || "Unknown";
+      const positionAtLap = lapPositions.find(
+        (position) => position.DriverNumber === row.driver_number && position.LapNumber === row.lap_number
+      );
       const r = await getStrategy({
         driver_number: row.driver_number,
         lap_number: row.lap_number,
@@ -1429,12 +1221,13 @@ export default function RacePage() {
         lap_delta: row.lap_delta,
         should_pit_soon: row.should_pit_soon,
         estimated_laps_to_pit: row.estimated_laps_to_pit,
+        position: positionAtLap?.Position,
         circuit_name: circuitName,
         total_race_laps: Math.max(...laps.map((l) => l.lap_number)),
       });
-      setStratResult(r?.recommendation || r?.detail || "Something went wrong. Try again.");
-    } catch {
-      setStratResult("Something went wrong. Try again.");
+      setStratResult(r.recommendation || "The strategy service returned no recommendation.");
+    } catch (reason) {
+      setStratResult(errorMessage(reason));
     } finally {
       setStratLoading(false);
     }
@@ -1449,6 +1242,9 @@ export default function RacePage() {
       );
       if (!row) return;
       const sd = sdByNum[row.driver_number];
+      const positionAtLap = lapPositions.find(
+        (position) => position.DriverNumber === row.driver_number && position.LapNumber === row.lap_number
+      );
       const r = await getCommentary({
         driver_name: sd?.full_name || `Driver ${row.driver_number}`,
         driver_number: row.driver_number,
@@ -1458,10 +1254,12 @@ export default function RacePage() {
         tyre_age_laps: row.tyre_age_laps || 0,
         should_pit_soon: row.should_pit_soon,
         tyre_degradation_rate: row.tyre_degradation_rate,
+        position: positionAtLap?.Position,
+        strategy_recommendation: stratResult || undefined,
       });
       setCommResult(r?.commentary || "");
-    } catch {
-      setCommResult("");
+    } catch (reason) {
+      setCommResult(errorMessage(reason));
     } finally {
       setCommLoading(false);
     }
@@ -1470,20 +1268,19 @@ export default function RacePage() {
   const allNums = laps
     ? [...new Set(laps.map((l) => l.driver_number))].sort((a, b) => a - b)
     : [];
+  const resultOnlyNums = results
+    .filter((result) => result.driver_number && !allNums.includes(result.driver_number))
+    .map((result) => result.driver_number);
   const dnsNums = results
-    .filter(
-      (r) =>
-        statusLabel(r.status).label === "DNS" &&
-        !allNums.includes(r.driver_number)
-    )
-    .map((r) => r.driver_number);
-  const allDriverNums = [...allNums, ...dnsNums];
+    .filter((result) => statusLabel(result.status).label === "DNS")
+    .map((result) => result.driver_number);
+  const allDriverNums = [...allNums, ...resultOnlyNums];
   const maxLap = laps ? Math.max(...laps.map((l) => l.lap_number)) : 57;
   const currentRace = calendar.find((c) => c.round === round);
 
   const chartData = (() => {
     if (!laps) return [];
-    const map: Record<number, any> = {};
+    const map: Record<number, Record<string, number | null>> = {};
     laps
       .filter((l) => selectedDrivers.includes(l.driver_number))
       .forEach((l) => {
@@ -1496,7 +1293,7 @@ export default function RacePage() {
             ? Math.max(0, l.tyre_degradation_rate)
             : null;
       });
-    return Object.values(map).sort((a: any, b: any) => a.lap - b.lap);
+    return Object.values(map).sort((a, b) => Number(a.lap) - Number(b.lap));
   })();
 
   const dnfAnnotations = selectedDrivers
@@ -1594,7 +1391,7 @@ export default function RacePage() {
           zIndex: 50,
         }}
       >
-        <div
+        <div className="site-header-inner"
           style={{
             maxWidth: 1400,
             margin: "0 auto",
@@ -1628,7 +1425,7 @@ export default function RacePage() {
             <ArrowLeft size={16} style={{ color: accent }} /> RACES
           </button>
           <div style={{ width: 1, height: 24, background: C.border }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="site-header-title" style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
               style={{
                 background: accent,
@@ -1717,7 +1514,7 @@ export default function RacePage() {
                 marginBottom: 8,
               }}
             >
-              No Data Available
+              {dataError ? "Race Data Failed" : "No Data Available"}
             </div>
             <p
               style={{
@@ -1739,12 +1536,10 @@ export default function RacePage() {
                 lineHeight: 1.6,
               }}
             >
-              Go back to the season page and click{" "}
-              <strong style={{ color: accent }}>LOAD DATA</strong> on this race
-              card.
+              {dataError || <>Go back to the season page and click <strong style={{ color: accent }}>LOAD DATA</strong> on this race card.</>}
             </p>
-            <ActionBtn onClick={() => router.push(`/${year}`)} accent={accent}>
-              <ArrowLeft size={16} /> BACK TO {year} SEASON
+            <ActionBtn onClick={() => dataError ? void load() : router.push(`/${year}`)} accent={accent}>
+              {dataError ? "RETRY" : <><ArrowLeft size={16} /> BACK TO {year} SEASON</>}
             </ActionBtn>
           </div>
         )}
@@ -1861,7 +1656,7 @@ export default function RacePage() {
             </div>
 
             {/* Stat cards */}
-            <div
+            <div className="race-stat-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(4,1fr)",
@@ -1933,7 +1728,7 @@ export default function RacePage() {
                     active={selectedDrivers.includes(n)}
                     raceStatus={resultStatusMap[n]}
                     onClick={() => {
-                      if (dnsNums.includes(n)) return;
+                      if (resultOnlyNums.includes(n)) return;
                       setSelected((p) =>
                         p.includes(n) ? p.filter((x) => x !== n) : [...p, n]
                       );
@@ -1945,6 +1740,8 @@ export default function RacePage() {
 
             {/* Tab bar */}
             <div
+              role="tablist"
+              aria-label="Race analysis views"
               style={{
                 borderBottom: `1px solid ${C.border}`,
                 marginBottom: 20,
@@ -1968,7 +1765,7 @@ export default function RacePage() {
                 <TabBtn
                   key={key}
                   active={tab === key}
-                  onClick={() => setTab(key as any)}
+                  onClick={() => setTab(key as typeof tab)}
                   accent={accent}
                 >
                   {label}
@@ -1977,7 +1774,7 @@ export default function RacePage() {
             </div>
 
             {/* ── LAP TIMES ── */}
-            {tab === "laps" && (
+            <LapTimesTab active={tab === "laps"}>
               <div style={card}>
                 <SectionTitle
                   accent={accent}
@@ -2133,10 +1930,10 @@ export default function RacePage() {
                   </ResponsiveContainer>
                 )}
               </div>
-            )}
+            </LapTimesTab>
 
             {/* ── LAP CHART ── */}
-            {tab === "positions" && (
+            <LapChartTab active={tab === "positions"}>
               <div style={card}>
                 <SectionTitle
                   accent={accent}
@@ -2176,10 +1973,10 @@ export default function RacePage() {
                   />
                 )}
               </div>
-            )}
+            </LapChartTab>
 
             {/* ── TYRE DEG ── */}
-            {tab === "deg" && (
+            <TyreDegradationTab active={tab === "deg"}>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 12 }}
               >
@@ -2424,10 +2221,10 @@ export default function RacePage() {
                     })}
                 </div>
               </div>
-            )}
+            </TyreDegradationTab>
 
             {/* ── TYRE STRATEGY ── */}
-            {tab === "tyre-strategy" && (
+            <TyreStrategyTab active={tab === "tyre-strategy"}>
               <div style={card}>
                 <SectionTitle
                   accent={accent}
@@ -2466,14 +2263,13 @@ export default function RacePage() {
                     results={results}
                     maxLap={maxLap}
                     selectedDrivers={selectedDrivers}
-                    accent={accent}
                   />
                 )}
               </div>
-            )}
+            </TyreStrategyTab>
 
             {/* ── RACE RESULTS ── */}
-            {tab === "results" && (
+            <ResultsTab active={tab === "results"}>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 12 }}
               >
@@ -2670,10 +2466,10 @@ export default function RacePage() {
                   )}
                 </div>
               </div>
-            )}
+            </ResultsTab>
 
             {/* ── FASTEST LAPS ── */}
-            {tab === "fastest-laps" && (
+            <FastestLapsTab active={tab === "fastest-laps"}>
               <div style={card}>
                 <SectionTitle
                   accent={accent}
@@ -2768,14 +2564,14 @@ export default function RacePage() {
                   </div>
                 )}
               </div>
-            )}
+            </FastestLapsTab>
 
             {/* ── PIT STOPS ── */}
-            {tab === "pit-stops" && (
+            <PitStopsTab active={tab === "pit-stops"}>
               <div style={card}>
                 <SectionTitle
                   accent={accent}
-                  sub="Every pit stop. Sorted by lap. Green = fastest stop."
+                  sub="Official pit-lane duration when Jolpica provides it; FastF1 values are marked as an approximate fallback."
                 >
                   Pit Stop Times
                 </SectionTitle>
@@ -2827,12 +2623,12 @@ export default function RacePage() {
                           : null;
                         return [
                           {
-                            label: "FASTEST STOP",
+                            label: "FASTEST PIT-LANE TIME",
                             val: fastest,
                             color: "#22c55e",
                           },
-                          { label: "AVERAGE STOP", val: avg, color: C.text },
-                          { label: "SLOWEST STOP", val: slowest, color: C.red },
+                          { label: "AVERAGE PIT-LANE TIME", val: avg, color: C.text },
+                          { label: "SLOWEST PIT-LANE TIME", val: slowest, color: C.red },
                         ].map((s) => (
                           <div
                             key={s.label}
@@ -2885,12 +2681,12 @@ export default function RacePage() {
                     </div>
                     <F1Header
                       cols={PS_COLS}
-                      labels={["Driver", "Team", "Stop No.", "Lap", "Duration"]}
+                      labels={["Driver", "Team", "Stop No.", "Lap", "Pit-lane time"]}
                     />
                     {enrichedPitStops
                       .sort((a, b) => a.lap - b.lap)
                       .map((ps, i) => {
-                        const sd = (ps as any).sd || sdByNum[ps.driver_number];
+                        const sd = ps.sd || sdByNum[ps.driver_number];
                         const color = sd?.color || "#888";
                         // const logo = getTeamLogo(sd?.team || "");
                         const dur = ps.duration_seconds;
@@ -2972,6 +2768,9 @@ export default function RacePage() {
                                 }}
                               >
                                 {ps.duration_formatted}
+                                {ps.source === "fastf1_estimate" && (
+                                  <span style={{ marginLeft: 5, fontSize: 9, color: C.muted }}>EST.</span>
+                                )}
                                 {isFastest && (
                                   <span
                                     style={{
@@ -2997,11 +2796,11 @@ export default function RacePage() {
                   </>
                 )}
               </div>
-            )}
+            </PitStopsTab>
 
             {/* ── AI STRATEGY ── */}
-            {tab === "ai-strategy" && (
-              <div
+            <AiStrategyTab active={tab === "ai-strategy"}>
+              <div className="race-ai-layout"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "340px 1fr",
@@ -3217,11 +3016,11 @@ export default function RacePage() {
                   )}
                 </div>
               </div>
-            )}
+            </AiStrategyTab>
 
             {/* ── COMMENTARY ── */}
-            {tab === "commentary" && (
-              <div
+            <CommentaryTab active={tab === "commentary"}>
+              <div className="race-ai-layout"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "340px 1fr",
@@ -3428,7 +3227,7 @@ export default function RacePage() {
                   )}
                 </div>
               </div>
-            )}
+            </CommentaryTab>
           </>
         )}
       </main>
