@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { errorMessage, getSeasons, getAvailableRaces } from "../lib/api";
+import { errorMessage, getSeasons, getAvailableRaces, warmBackend } from "../lib/api";
 
 const C = {
   black: "#080808",
@@ -26,6 +26,7 @@ export default function HomePage() {
   const [loadingMessage, setLoadingMessage] = useState("Loading seasons…");
 
   useEffect(() => {
+    warmBackend();
     let cancelled = false;
     const load = async () => {
       let attempt = 0;

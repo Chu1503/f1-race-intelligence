@@ -1,0 +1,42 @@
+name: Update race archive
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: race-archive-update
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install archive dependencies
+        run: pip install -r requirements-api.txt
+      - name: Process newly completed races
+        run: python scripts/process_all_seasons.py --years "$(date +%Y)" --delay 1
+      - name: Export static frontend data
+        run: python scripts/export_static_data.py
+      - name: Commit archive changes
+        shell: bash
+        run: |
+          git add data/spark_output/historical data/jolpica_cache frontend/public/data
+          if git diff --cached --quiet; then
+            echo "Archive is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(data): archive newly completed races"
+          git push

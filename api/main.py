@@ -3,9 +3,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import re
 import threading
+import time
 import requests
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -27,6 +28,18 @@ class DataProviderError(RuntimeError):
     pass
 
 app = FastAPI(title="F1 Race Intelligence API", version="1.0.0")
+
+
+@app.middleware("http")
+async def development_request_timing(request: Request, call_next):
+    if settings.ENVIRONMENT == "production":
+        return await call_next(request)
+    started = time.perf_counter()
+    try:
+        return await call_next(request)
+    finally:
+        elapsed_ms = (time.perf_counter() - started) * 1_000
+        logger.info(f"[perf] api {request.method} {request.url.path} {elapsed_ms:.1f}ms")
 
 
 @app.exception_handler(DataProviderError)
@@ -83,6 +96,20 @@ _results_cache: dict = {}
 _laps_cache: dict = {}   # (year, round) -> list[dict]
 _feature_frame_cache: dict[tuple[int, int], pd.DataFrame] = {}
 
+LAP_RESPONSE_COLUMNS = (
+    "driver_number",
+    "lap_number",
+    "lap_duration",
+    "tyre_compound",
+    "tyre_age_laps",
+    "tyre_degradation_rate",
+    "rolling_avg_lap_time",
+    "lap_delta",
+    "should_pit_soon",
+    "estimated_laps_to_pit",
+    "stint_length",
+)
+
 
 def _load_race_frame(year: int, round_number: int) -> pd.DataFrame:
     key = (year, round_number)
@@ -91,8 +118,8 @@ def _load_race_frame(year: int, round_number: int) -> pd.DataFrame:
     race_folder = f"{year}_round{round_number}"
     persistent = settings.DATA_DIR / "spark_output" / "historical" / race_folder
     packaged = settings.PROJECT_ROOT / "data" / "spark_output" / "historical" / race_folder
-    path = persistent if persistent.exists() else packaged
-    if not path.exists():
+    path = next((candidate for candidate in (persistent, packaged) if candidate.exists()), None)
+    if path is None:
         raise HTTPException(status_code=404, detail="No processed race data found.")
     from spark_processing.pandas_features import compute_features_pandas
     frame = compute_features_pandas(pd.read_parquet(path))
@@ -264,6 +291,7 @@ def _get_fastf1_session(year: int, round_number: int):
             return _fastf1_session_cache[key]
         import fastf1, warnings
         warnings.filterwarnings("ignore")
+        settings.FASTF1_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         fastf1.Cache.enable_cache(str(settings.FASTF1_CACHE_DIR))
         session = fastf1.get_session(year, round_number, "R")
         session.load(telemetry=False, weather=False, messages=False)
@@ -403,10 +431,8 @@ def get_all_laps(year: int, round_number: int):
     if key in _laps_cache:
         return _laps_cache[key]
     try:
-        path = f"data/spark_output/historical/{year}_round{round_number}"
-        if not os.path.exists(path):
-            raise HTTPException(status_code=404, detail="No data found. Run batch processor first.")
         df = _load_race_frame(year, round_number)
+        df = df.loc[:, [column for column in LAP_RESPONSE_COLUMNS if column in df.columns]]
         df = df.replace({float("nan"): None, float("inf"): None, float("-inf"): None})
         records = df.to_dict(orient="records")
         _laps_cache[key] = records
@@ -420,9 +446,6 @@ def get_all_laps(year: int, round_number: int):
 @app.get("/race/{year}/{round_number}/drivers")
 def get_race_drivers(year: int, round_number: int):
     try:
-        path = f"data/spark_output/historical/{year}_round{round_number}"
-        if not os.path.exists(path):
-            raise HTTPException(status_code=404, detail="No data found.")
         df = _load_race_frame(year, round_number)
         df = df.replace({float("nan"): None, float("inf"): None, float("-inf"): None})
         summary = (
@@ -533,10 +556,6 @@ def get_lap_positions(year: int, round_number: int):
 
     # ── Fallback: derive from cumulative lap times in parquet ─────────────────
     try:
-        path = f"data/spark_output/historical/{year}_round{round_number}"
-        if not os.path.exists(path):
-            return []
-
         df = _load_race_frame(year, round_number)
         df = df[["driver_number", "lap_number", "lap_duration"]].copy()
         df = df[df["lap_duration"] > 0].sort_values(["driver_number", "lap_number"])
@@ -569,10 +588,6 @@ def get_lap_positions(year: int, round_number: int):
 def get_fastest_laps(year: int, round_number: int):
     """Each driver's fastest lap — built from parquet, no FastF1 needed."""
     try:
-        path = f"data/spark_output/historical/{year}_round{round_number}"
-        if not os.path.exists(path):
-            return []
-
         df = _load_race_frame(year, round_number)
         # parquet already filters 60 < lap_duration < 200 — all laps are valid race laps
         df = df[df["lap_duration"] > 0]
@@ -621,10 +636,6 @@ def get_fastest_laps(year: int, round_number: int):
 def get_tyre_strategies(year: int, round_number: int):
     """Tyre stint data — built from parquet (stint_number column), no FastF1 needed."""
     try:
-        path = f"data/spark_output/historical/{year}_round{round_number}"
-        if not os.path.exists(path):
-            return []
-
         df = _load_race_frame(year, round_number)
         df = df.sort_values(["driver_number", "lap_number"])
 

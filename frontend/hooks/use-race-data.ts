@@ -5,7 +5,7 @@ import { getTeamColor, type CalendarRace, type SessionDriver } from "../lib/cons
 import {
   errorMessage, getCalendar, getDriversForYear, getFastestLaps, getLapPositions,
   getLaps, getPitStops, getRaceDriverStats, getRaceIncidents, getRaceResults,
-  getTyreStrategies, type DriverInfo,
+  getStaticRaceBundle, getTyreStrategies, warmBackend, type DriverInfo,
 } from "../lib/api";
 import type { DriverStat, FastestLap, Incident, LapPosition, LapRow, PitStop, RaceResult, TyreStrategy } from "../components/race/types";
 
@@ -44,21 +44,48 @@ export function useRaceData(year: number, round: number) {
   const load = useCallback(async () => {
     setLoading(true); setError(""); setLaps(null);
     try {
-      const [cal, driverResponse, lapRows, stats, resultResponse, incidentResponse, positions, fastest, strategies, stops] = await Promise.all([
-        getCalendar(year), getDriversForYear(year), getLaps<LapRow[]>(year, round), getRaceDriverStats<DriverStat[]>(year, round),
-        getRaceResults<{ results: RaceResult[] }>(year, round), getRaceIncidents<{ incidents: Incident[] }>(year, round),
-        getLapPositions<LapPosition[]>(year, round), getFastestLaps<FastestLap[]>(year, round),
-        getTyreStrategies<TyreStrategy[]>(year, round), getPitStops<PitStop[]>(year, round),
+      const [cal, driverResponse, staticBundle] = await Promise.all([
+        getCalendar(year), getDriversForYear(year), getStaticRaceBundle(year, round),
       ]);
+      let lapRows: LapRow[];
+      let stats: DriverStat[];
+      let resultRows: RaceResult[];
+      let incidentRows: Incident[];
+      let positions: LapPosition[];
+      let fastest: FastestLap[];
+      let strategies: TyreStrategy[];
+      let stops: PitStop[];
+      if (staticBundle) {
+        ({
+          laps: lapRows,
+          driverStats: stats,
+          results: resultRows,
+          incidents: incidentRows,
+          lapPositions: positions,
+          fastestLaps: fastest,
+          tyreStrategies: strategies,
+          pitStops: stops,
+        } = staticBundle);
+      } else {
+        const [dynamicLaps, dynamicStats, resultResponse, incidentResponse, dynamicPositions, dynamicFastest, dynamicStrategies, dynamicStops] = await Promise.all([
+          getLaps<LapRow[]>(year, round), getRaceDriverStats<DriverStat[]>(year, round),
+          getRaceResults<{ results: RaceResult[] }>(year, round), getRaceIncidents<{ incidents: Incident[] }>(year, round),
+          getLapPositions<LapPosition[]>(year, round), getFastestLaps<FastestLap[]>(year, round),
+          getTyreStrategies<TyreStrategy[]>(year, round), getPitStops<PitStop[]>(year, round),
+        ]);
+        lapRows = dynamicLaps; stats = dynamicStats; resultRows = resultResponse.results;
+        incidentRows = incidentResponse.incidents; positions = dynamicPositions; fastest = dynamicFastest;
+        strategies = dynamicStrategies; stops = dynamicStops;
+      }
       const drivers = Object.fromEntries(driverResponse.drivers.map((driver) => [driver.code, driver]));
-      setCalendar(cal.races); setLaps(lapRows); setDriverStats(stats); setResults(resultResponse.results);
-      setIncidents(incidentResponse.incidents); setLapPositions(positions); setFastestLaps(fastest); setTyreStrategies(strategies); setPitStops(stops);
-      setSdByNum(buildSessionDrivers(fastest, positions, strategies, drivers, resultResponse.results));
+      setCalendar(cal.races); setLaps(lapRows); setDriverStats(stats); setResults(resultRows);
+      setIncidents(incidentRows); setLapPositions(positions); setFastestLaps(fastest); setTyreStrategies(strategies); setPitStops(stops);
+      setSdByNum(buildSessionDrivers(fastest, positions, strategies, drivers, resultRows));
     } catch (reason) {
       setError(errorMessage(reason));
     } finally { setLoading(false); }
   }, [year, round]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { warmBackend(); void load(); }, [load]);
   return { calendar, laps, driverStats, results, incidents, lapPositions, fastestLaps, tyreStrategies, pitStops, sdByNum, loading, error, retry: load };
 }

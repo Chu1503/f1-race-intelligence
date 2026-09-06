@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import argparse
 import time
 import requests
+from datetime import date
 from loguru import logger
 from logger_config import setup_logging
 
@@ -20,15 +21,23 @@ JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
 
 def get_completed_rounds(year: int) -> list[tuple[int, str]]:
     """
-    Fetch all completed rounds for a year.
+    Fetch the calendar and retain races whose scheduled date has passed.
+
+    The results endpoint paginates individual driver results, which can make a
+    season look as though it contains only five races. Calendar rows are one per
+    race and therefore provide the correct round list.
     """
     try:
         r = requests.get(
-            f"{JOLPICA_BASE}/{year}/results.json?limit=1000", timeout=15
+            f"{JOLPICA_BASE}/{year}.json?limit=100", timeout=15
         )
+        r.raise_for_status()
         races = r.json()["MRData"]["RaceTable"]["Races"]
         result = []
         for race in races:
+            race_date = date.fromisoformat(race["date"])
+            if race_date >= date.today():
+                continue
             rnum = int(race["round"])
             name = race["raceName"].replace(" Grand Prix", " GP")
             result.append((rnum, name))
@@ -41,12 +50,12 @@ def get_completed_rounds(year: int) -> list[tuple[int, str]]:
 
 def already_processed(year: int, round_number: int) -> bool:
     path = f"data/spark_output/historical/{year}_round{round_number}"
-    return os.path.exists(path) and len(os.listdir(path)) > 0
+    return os.path.exists(os.path.join(path, "_SUCCESS"))
 
 
 def draw_progress(current: int, total: int, label: str, width: int = 40) -> None:
     filled = int(width * current / total) if total > 0 else 0
-    bar = "█" * filled + "░" * (width - filled)
+    bar = "#" * filled + "-" * (width - filled)
     pct = int(100 * current / total) if total > 0 else 0
     print(f"\r  [{bar}] {pct:3d}%  {current}/{total}  {label:<40}", end="", flush=True)
 
@@ -58,7 +67,7 @@ def process_round(year: int, round_number: int, race_name: str, force: bool = Fa
         if df is not None and len(df) > 0:
             return True
         else:
-            logger.warning(f"\n  EMPTY {year} R{round_number} {race_name} — no laps returned")
+            logger.warning(f"\n  EMPTY {year} R{round_number} {race_name} - no laps returned")
             return False
     except Exception as e:
         logger.error(f"\n  FAILED {year} R{round_number} {race_name}: {e}")
@@ -90,7 +99,7 @@ def main():
     args = parser.parse_args()
 
     print("\n" + "=" * 60)
-    print(f"  F1 Race Intelligence — Bulk Data Processor")
+    print(f"  F1 Race Intelligence - Bulk Data Processor")
     print(f"  Seasons: {args.years}")
     print("=" * 60)
 
@@ -113,7 +122,7 @@ def main():
     if to_skip:
         print(f"\n  Skipping already processed:")
         for y, r, n in to_skip:
-            print(f"    ✓ {format_race_label(y, r, n)}")
+            print(f"    [OK] {format_race_label(y, r, n)}")
 
     if not to_process:
         print("\n  Nothing to process: all rounds already exist.")
@@ -137,12 +146,12 @@ def main():
 
         if ok:
             succeeded += 1
-            draw_progress(i + 1, len(to_process), f"✓ {label} ({elapsed:.0f}s)")
+            draw_progress(i + 1, len(to_process), f"[OK] {label} ({elapsed:.0f}s)")
             print()
         else:
             failed += 1
             failed_list.append(label)
-            draw_progress(i + 1, len(to_process), f"✗ FAILED: {label}")
+            draw_progress(i + 1, len(to_process), f"[FAIL] {label}")
             print()
 
         if i < len(to_process) - 1:
@@ -150,14 +159,14 @@ def main():
 
     print("\n" + "=" * 60)
     print(f"  COMPLETE")
-    print(f"  ✓ Succeeded: {succeeded}")
-    print(f"  ✗ Failed:    {failed}")
-    print(f"  ↷ Skipped:   {len(to_skip)}")
+    print(f"  [OK] Succeeded: {succeeded}")
+    print(f"  [FAIL] Failed:  {failed}")
+    print(f"  Skipped:        {len(to_skip)}")
 
     if failed_list:
         print(f"\n  Failed rounds (rerun script to retry):")
         for label in failed_list:
-            print(f"    ✗ {label}")
+            print(f"    [FAIL] {label}")
 
     return failed == 0
 

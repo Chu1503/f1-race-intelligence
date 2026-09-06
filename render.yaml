@@ -2,13 +2,10 @@ services:
   - type: web
     name: f1-intelligence-api
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements-api.txt
     startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health/ready
-    disk:
-      name: f1-race-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -23,13 +20,13 @@ services:
       - key: PINECONE_ENVIRONMENT
         value: us-east-1
       - key: FASTF1_CACHE_DIR
-        value: /var/data/fastf1_cache
+        value: /tmp/f1-race-data/fastf1_cache
       - key: DATA_DIR
-        value: /var/data
+        value: /tmp/f1-race-data
       - key: JOB_DB_PATH
-        value: /var/data/jobs.sqlite3
+        value: /tmp/f1-race-data/jobs.sqlite3
       - key: LIVE_OUTPUT_DIR
-        value: /var/data/spark_output/live
+        value: /tmp/f1-race-data/spark_output/live
       - key: ENVIRONMENT
         value: production
       - key: LOG_LEVEL

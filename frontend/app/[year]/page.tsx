@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { errorMessage, getCalendar, getAvailableRaces, getProcessingJob, runBatchProcessor } from "../../lib/api";
+import { errorMessage, getCalendar, getAvailableRaces, getProcessingJob, runBatchProcessor, warmBackend } from "../../lib/api";
 import { getFlag, type CalendarRace } from "../../lib/constants";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import Image from "next/image";
@@ -39,6 +39,7 @@ export default function SeasonPage() {
   const accentColor = yearColors[year] || C.red;
 
   useEffect(() => {
+    warmBackend();
     mounted.current = true;
     Promise.all([getCalendar(year), getAvailableRaces()]).then(
       ([cal, avail]) => {

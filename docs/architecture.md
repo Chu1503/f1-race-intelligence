@@ -6,9 +6,9 @@ The default product is a historical race-analysis application. A race becomes vi
 
 ## User workflows and API calls
 
-1. `/` requests `GET /seasons` and `GET /available-races`. The latter scans packaged and persistent historical data, but returns only complete datasets.
-2. Selecting a season opens `/{year}` and requests `GET /calendar/{year}` from the Jolpica-backed calendar cache plus `GET /available-races`.
-3. Selecting a loaded race opens `/{year}/{round}`. `useRaceData` loads laps, driver summaries, results, incidents, positions, fastest laps, tyre strategies, and pit stops concurrently. Failures are surfaced with a retry action instead of being converted to `null`.
+1. `/` reads `/data/manifest.json` from Vercel. The manifest contains seasons and every archived race, so the page does not wait for Render.
+2. Selecting a season opens `/{year}` and reads its calendar plus availability from that same in-browser manifest cache.
+3. Selecting an archived race opens `/{year}/{round}` and downloads one content-hashed static bundle containing laps, driver summaries, results, incidents, positions, fastest laps, tyre strategies, and pit stops. A newly processed race that is not in the current deployment falls back to the dynamic FastAPI endpoints.
 4. Selecting an unloaded past race and pressing `LOAD DATA` calls same-origin `POST /api/processing/jobs`. The Next route adds the server-only service credential and forwards to `POST /processing/jobs`. The UI polls `/api/processing/jobs/{id}` until `succeeded` or `failed`; there is no unbounded timer and every failure is recorded.
 5. AI Strategy posts the selected lap plus tyre, degradation, circuit, position, and race-distance context to `/api/ai/strategy`. Next authenticates to the backend. The backend retrieves same-circuit RAG examples, calls the CrewAI/Anthropic strategist, and returns the recommendation plus auditable RAG source metadata.
 6. Commentary follows the same protected proxy path and includes the selected position and any generated strategy recommendation.
@@ -17,7 +17,7 @@ The default product is a historical race-analysis application. A race becomes vi
 
 | Service | Purpose | Data path |
 | --- | --- | --- |
-| Next.js 16 / Vercel | UI and secret-preserving proxy for costly operations | Browser → `/api/ai/*` or `/api/processing/*` → FastAPI |
+| Next.js 16 / Vercel | UI, CDN-hosted historical bundles, and secret-preserving proxy for dynamic operations | Browser → `/data/*` for history; `/api/ai/*` or `/api/processing/*` → FastAPI |
 | FastAPI / Render | Read APIs, validation, rate limits, jobs, AI orchestration | Parquet/Jolpica/FastF1/Pinecone → JSON |
 | Jolpica | Calendar, roster, official result and pit-stop records | Cached on disk after successful HTTP responses |
 | FastF1 | Historical lap ingestion and fallback session detail | Race session → normalized `LapData` |
@@ -44,8 +44,20 @@ OpenF1's `/laps` payload does not contain compound or tyre age. The connector jo
 
 ## Security and operations
 
-AI, RAG search, and processing endpoints require `X-API-Key`; only Next server routes know the shared key. Per-IP sliding-window rate limits protect each costly route. Production refuses protected calls if the key is missing. `/health` reports dependency configuration without revealing secrets, while `/health/ready` returns 503 when core dependencies are unavailable. Render mounts `/var/data` so job records, FastF1 cache, live snapshots, and dynamically loaded races survive restarts.
+AI, RAG search, and processing endpoints require `X-API-Key`; only Next server routes know the shared key. Per-IP sliding-window rate limits protect each costly route. Production refuses protected calls if the key is missing. `/health` reports dependency configuration without revealing secrets, while `/health/ready` returns 503 when core dependencies are unavailable. The free Render configuration uses `/tmp`; job records, newly downloaded FastF1 files, live snapshots, and dynamically loaded races are therefore ephemeral. Durable historical availability comes from the versioned static frontend artifacts committed to the repository.
 
-Set `SERVICE_API_KEY` on Render and set the identical value as `API_SERVICE_KEY` on Vercel. Set `API_BASE_URL` on Vercel to the Render origin. Browser data requests use the same-origin `/api/data/*` proxy, which avoids cross-origin blocking and lets the Vercel server wait for a sleeping Render instance to start. `NEXT_PUBLIC_API_URL` remains a server-side fallback for existing deployments.
+Set `SERVICE_API_KEY` on Render and set the identical value as `API_SERVICE_KEY` on Vercel. Set `API_BASE_URL` on Vercel to the Render origin. Historical browser reads use same-origin static files. A non-blocking health request begins waking Render in the background for AI, processing, or a new race. Dynamic reads use the `/api/data/*` proxy; `NEXT_PUBLIC_API_URL` remains a server-side fallback for existing deployments.
+
+## Refreshing the static archive
+
+After adding or reprocessing historical races, run:
+
+```powershell
+.\venv\Scripts\python.exe scripts\export_static_data.py
+```
+
+Commit the generated `frontend/public/data/manifest.json` and content-hashed files below `frontend/public/data/races/`, then deploy the frontend. The exporter writes each bundle before atomically replacing the manifest. Hashed bundles are cached for one year; the manifest is shared-cached for five minutes with a one-hour stale window. Protected AI and processing responses remain private and uncached.
+
+The checked-in snapshot contains 82 completed races: 22 from 2023, 24 from 2024, 24 from 2025, and the first 12 from 2026. The scheduled `.github/workflows/update-race-archive.yml` job checks the current season each Monday, processes only new races, refreshes the manifest, and commits the durable artifacts. It can also be run manually from the GitHub Actions page. If repository policy blocks workflow pushes, enable read/write workflow permissions or run the commands above locally.
 
 For local development, run the FastAPI service on port `8100` and Next.js on port `3000`. Ports `8000` and `8001` are intentionally not assumed because they are occupied by other local services on the development machine. The frontend's `.env.local` routes its server-side proxy to `http://localhost:8100`.

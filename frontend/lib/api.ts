@@ -3,6 +3,7 @@
 // sleeping backend enough time to start.
 const API = "/api/data";
 const DEFAULT_TIMEOUT_MS = process.env.NODE_ENV === "production" ? 100_000 : 8_000;
+const STATIC_MANIFEST_URL = "/data/manifest.json";
 
 export class ApiError extends Error {
   constructor(
@@ -55,6 +56,31 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface AvailableRace { year: number; round: number }
+export interface StaticRaceBundle {
+  version: number;
+  year: number;
+  round: number;
+  laps: import("../components/race/types").LapRow[];
+  driverStats: import("../components/race/types").DriverStat[];
+  results: import("../components/race/types").RaceResult[];
+  resultsSource: string;
+  incidents: import("../components/race/types").Incident[];
+  lapPositions: import("../components/race/types").LapPosition[];
+  fastestLaps: import("../components/race/types").FastestLap[];
+  tyreStrategies: import("../components/race/types").TyreStrategy[];
+  pitStops: import("../components/race/types").PitStop[];
+}
+interface StaticManifest {
+  version: number;
+  generatedAt: string;
+  seasons: number[];
+  availableRaces: AvailableRace[];
+  years: Record<string, {
+    calendar: import("./constants").CalendarRace[];
+    drivers: DriverInfo[];
+  }>;
+  raceFiles: Record<string, string>;
+}
 export interface ProcessingJob {
   id: string;
   year: number;
@@ -65,10 +91,61 @@ export interface ProcessingJob {
   rows_written?: number | null;
 }
 
-export const getAvailableRaces = () => requestJson<{ races: AvailableRace[] }>(`${API}/available-races`);
-export const getSeasons = () => requestJson<{ seasons: number[] }>(`${API}/seasons`);
-export const getCalendar = (year: number) => requestJson<{ year: number; races: import("./constants").CalendarRace[] }>(`${API}/calendar/${year}`);
-export const getDriversForYear = (year: number) => requestJson<{ year: number; drivers: DriverInfo[] }>(`${API}/drivers/${year}`);
+let staticManifestPromise: Promise<StaticManifest | null> | null = null;
+let backendWarmStarted = false;
+
+async function getStaticManifest(): Promise<StaticManifest | null> {
+  if (!staticManifestPromise) {
+    staticManifestPromise = fetch(STATIC_MANIFEST_URL, { cache: "no-cache" })
+      .then(async (response) => {
+        if (response.ok) return response.json() as Promise<StaticManifest>;
+        staticManifestPromise = null;
+        return null;
+      })
+      .catch(() => {
+        staticManifestPromise = null;
+        return null;
+      });
+  }
+  return staticManifestPromise;
+}
+
+export async function getStaticRaceBundle(year: number, round: number): Promise<StaticRaceBundle | null> {
+  const manifest = await getStaticManifest();
+  const path = manifest?.raceFiles[`${year}-${round}`];
+  if (!path) return null;
+  try {
+    const response = await fetch(path, { cache: "force-cache" });
+    return response.ok ? await response.json() as StaticRaceBundle : null;
+  } catch {
+    return null;
+  }
+}
+
+export function warmBackend(): void {
+  // Static data renders immediately. This non-blocking request gives the free
+  // backend time to wake before a visitor asks for AI or new-race processing.
+  if (backendWarmStarted) return;
+  backendWarmStarted = true;
+  void fetch(`${API}/health?warm=${Date.now()}`, { cache: "no-store" }).catch(() => undefined);
+}
+
+export const getAvailableRaces = async () => {
+  const manifest = await getStaticManifest();
+  return manifest ? { races: manifest.availableRaces } : requestJson<{ races: AvailableRace[] }>(`${API}/available-races`);
+};
+export const getSeasons = async () => {
+  const manifest = await getStaticManifest();
+  return manifest ? { seasons: manifest.seasons } : requestJson<{ seasons: number[] }>(`${API}/seasons`);
+};
+export const getCalendar = async (year: number) => {
+  const races = (await getStaticManifest())?.years[String(year)]?.calendar;
+  return races?.length ? { year, races } : requestJson<{ year: number; races: import("./constants").CalendarRace[] }>(`${API}/calendar/${year}`);
+};
+export const getDriversForYear = async (year: number) => {
+  const drivers = (await getStaticManifest())?.years[String(year)]?.drivers;
+  return drivers?.length ? { year, drivers } : requestJson<{ year: number; drivers: DriverInfo[] }>(`${API}/drivers/${year}`);
+};
 export const getLaps = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/laps`);
 export const getRaceDriverStats = <T = unknown[]>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/drivers`);
 export const getRaceResults = <T = unknown>(year: number, round: number) => requestJson<T>(`${API}/race/${year}/${round}/results`);

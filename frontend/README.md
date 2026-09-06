@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# F1 Race Intelligence frontend
 
-## Getting Started
+This is the Next.js 16 frontend. Vercel serves historical race data directly from `public/data`; FastAPI/Render is needed only for AI, ingestion, live data, and a newly processed race that has not yet been exported.
 
-First, run the development server:
+## Local development
 
-```bash
+From the repository root, start FastAPI on port 8100. Then run:
+
+```powershell
+cd frontend
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The historical archive also works with FastAPI stopped.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Refresh historical data
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+After processing a new race, run this from the repository root:
 
-## Learn More
+```powershell
+.\venv\Scripts\python.exe scripts\export_static_data.py
+```
 
-To learn more about Next.js, take a look at the following resources:
+Existing bundles are reused. Use `--force` only when the bundle schema or derivation logic changes. Commit the new Parquet folder, the changed manifest, and the new content-hashed bundle. The weekly `Update race archive` GitHub workflow performs this automatically for the current season.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Validation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```powershell
+npm test
+npm run lint
+npm run build
+```

@@ -27,6 +27,7 @@ notebooks/.ipynb_checkpoints/
 !package.json
 !package-lock.json
 !data/jolpica_cache/*.json
+!frontend/public/data/**/*.json
 
 # Logs
 *.log
