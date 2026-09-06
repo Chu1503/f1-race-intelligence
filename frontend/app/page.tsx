@@ -72,71 +72,6 @@ export default function HomePage() {
         flexDirection: "column",
       }}
     >
-      <header
-        style={{
-          borderBottom: `1px solid ${C.border}`,
-          background: `${C.dark}ee`,
-          backdropFilter: "blur(20px)",
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        <div className="site-header-inner"
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            padding: "0 32px",
-            height: 64,
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div
-              style={{
-                background: C.red,
-                width: 36,
-                height: 36,
-                clipPath:
-                  "polygon(0 0, 85% 0, 100% 50%, 85% 100%, 0 100%, 15% 50%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 900,
-                  fontFamily: "'Barlow Condensed', sans-serif",
-                  color: "#fff",
-                  letterSpacing: "-0.05em",
-                }}
-              >
-                F1
-              </span>
-            </div>
-            <div>
-              <div
-                style={{
-                  fontFamily: "'Barlow Condensed', sans-serif",
-                  fontWeight: 900,
-                  fontSize: 18,
-                  letterSpacing: "0.15em",
-                  textTransform: "uppercase",
-                  lineHeight: 1,
-                }}
-              >
-                RACE INTELLIGENCE
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
       <div
         style={{
           maxWidth: 1200,
@@ -205,7 +140,7 @@ export default function HomePage() {
               lineHeight: 1.6,
             }}
           >
-            Explore every Grand Prix with lap-by-lap telemetry, tyre strategies,
+            Explore every Grand Prix with lap by lap telemetry, tyre strategies,
             AI race analysis and generated commentary over validated historical
             race data. Live mode is shown only when a processed OpenF1 session is connected.
           </p>

@@ -1,19 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Barlow, Barlow_Condensed } from "next/font/google";
 import ServiceWorkerCleanup from "../components/ServiceWorkerCleanup";
-
-const barlow = Barlow({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-barlow",
-});
-
-const barlowCondensed = Barlow_Condensed({
-  subsets: ["latin"],
-  weight: ["300", "400", "600", "700", "900"],
-  variable: "--font-barlow-condensed",
-});
 
 export const metadata: Metadata = {
   title: "F1 Race Intelligence",
@@ -26,10 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`${barlow.variable} ${barlowCondensed.variable}`}
-    >
+    <html lang="en">
       <body
         style={{
           minHeight: "100vh",

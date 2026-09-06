@@ -14,6 +14,11 @@ npm run dev
 
 The historical archive also works with FastAPI stopped.
 
+AI and processing requests are sent through protected server routes. Set the
+same long random `SERVICE_API_KEY` value in both the Render service and the
+Vercel project. The frontend also accepts the previous `API_SERVICE_KEY` name
+during migration.
+
 ## Refresh historical data
 
 After processing a new race, run this from the repository root:

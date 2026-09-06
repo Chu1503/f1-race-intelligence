@@ -90,7 +90,7 @@ const PS_COLS =
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function statusLabel(s: string): { label: string; color: string } {
-  if (!s || s === "Unknown") return { label: "—", color: C.muted };
+  if (!s || s === "Unknown") return { label: "N/A", color: C.muted };
   if (s === "Finished") return { label: "Finished", color: "#22c55e" };
   if (s.startsWith("+")) return { label: s, color: "#22c55e" };
   if (s === "Did Not Start" || s === "DNS")
@@ -413,13 +413,13 @@ function DriverBadge({
           {sd?.code || `#${num}`}
         </div>
         <div style={{ fontSize: 11, color: C.muted, letterSpacing: "0.08em" }}>
-          {sd?.team?.split(" ")[0] || "—"}
+          {sd?.team?.split(" ")[0] || "N/A"}
         </div>
       </div>
       {raceStatus &&
         raceStatus.label !== "Finished" &&
         !raceStatus.label.startsWith("+") &&
-        raceStatus.label !== "—" && (
+        raceStatus.label !== "N/A" && (
           <span
             style={{
               fontSize: 8,
@@ -688,7 +688,7 @@ function F1Row({
         minWidth: 0,
       }}
     >
-      {/* Left black position cell — fixed 60px */}
+      {/* Left black position cell, fixed at 60px */}
       <div
         style={{
           width: 60,
@@ -725,7 +725,7 @@ function F1Row({
   );
 }
 
-// Header row aligned to F1Row — 60px spacer + same grid + same padding
+// Header row aligned to F1Row with a 60px spacer, the same grid, and the same padding
 function F1Header({ cols, labels }: { cols: string; labels: string[] }) {
   return (
     <div style={{ display: "flex", marginBottom: 10 }}>
@@ -1320,7 +1320,7 @@ export default function RacePage() {
   const enrichedPitStops: PitStop[] = pitStops.map(ps => {
     let sd: SessionDriver | undefined;
   
-    // Priority 1: match by driver_code (3-letter) — same as fastest laps, most reliable
+    // Priority 1: match by three letter driver_code, as used by fastest laps
     if (ps.driver_code) {
       sd = Object.values(sdByNum).find(s => s.code === ps.driver_code.toUpperCase());
     }
@@ -1666,14 +1666,14 @@ export default function RacePage() {
             >
               <StatCard
                 label="Fastest Lap"
-                value={fastestLaps[0] ? fastestLaps[0].lap_time_formatted : "—"}
+                value={fastestLaps[0] ? fastestLaps[0].lap_time_formatted : "N/A"}
                 accent={accent}
               />
               <StatCard
                 label="Race Winner"
                 value={
                   results.find((r) => r.finish_position === 1)?.abbreviation ||
-                  "—"
+                  "N/A"
                 }
                 accent={accent}
               />
@@ -1778,7 +1778,7 @@ export default function RacePage() {
               <div style={card}>
                 <SectionTitle
                   accent={accent}
-                  sub="Each line = one driver's lap times. Spikes = pit out-laps / safety car. DNF drivers shown as dashed lines."
+                  sub="Each line = one driver's lap times. Spikes = pit out laps or safety car periods. DNF drivers are shown as dashed lines."
                 >
                   Lap Time Comparison
                 </SectionTitle>
@@ -1787,7 +1787,7 @@ export default function RacePage() {
                   return (
                     s.label !== "Finished" &&
                     !s.label.startsWith("+") &&
-                    s.label !== "—"
+                    s.label !== "N/A"
                   );
                 }).length > 0 && (
                   <div
@@ -1804,7 +1804,7 @@ export default function RacePage() {
                         return (
                           s.label !== "Finished" &&
                           !s.label.startsWith("+") &&
-                          s.label !== "—"
+                          s.label !== "N/A"
                         );
                       })
                       .map((r) => {
@@ -1935,11 +1935,8 @@ export default function RacePage() {
             {/* ── LAP CHART ── */}
             <LapChartTab active={tab === "positions"}>
               <div style={card}>
-                <SectionTitle
-                  accent={accent}
-                  sub="Position on every lap. P1 at top."
-                >
-                  Lap Chart — Race Positions
+                <SectionTitle accent={accent}>
+                  Lap Chart: Race Positions
                 </SectionTitle>
                 {lapPositions.length === 0 ? (
                   <div
@@ -1983,7 +1980,7 @@ export default function RacePage() {
                 <div style={card}>
                   <SectionTitle
                     accent={accent}
-                    sub="Seconds per lap lost to tyre wear. Above the red line = AI flags a pit stop."
+                    sub="Seconds per lap lost to tyre wear."
                   >
                     Tyre Degradation Rate
                   </SectionTitle>
@@ -2181,7 +2178,7 @@ export default function RacePage() {
                               letterSpacing: "0.05em",
                             }}
                           >
-                            {sd?.team || "—"}
+                            {sd?.team || "N/A"}
                           </div>
                           <div
                             style={{
@@ -2333,7 +2330,7 @@ export default function RacePage() {
                                   lineHeight: 1,
                                 }}
                               >
-                                {isDNS ? "DNS" : r.finish_position || "—"}
+                                {isDNS ? "DNS" : r.finish_position || "N/A"}
                               </span>
                             }
                           >
@@ -2356,13 +2353,13 @@ export default function RacePage() {
                               </span>
                             </Val>
                             <Val bgColor={color} mono size={15}>
-                              {isDNS ? "—" : r.grid_position || "—"}
+                              {isDNS ? "N/A" : r.grid_position || "N/A"}
                             </Val>
                             <Val bgColor={color} mono size={15}>
-                              {r.laps_completed || "—"}
+                              {r.laps_completed || "N/A"}
                             </Val>
                             <Val bgColor={color} mono size={15}>
-                              {r.time || "—"}
+                              {r.time || "N/A"}
                             </Val>
                             <div
                               style={{
@@ -2396,7 +2393,7 @@ export default function RacePage() {
                                 </span>
                               )}
                             </div>
-                            {/* Points — black/white based on bg, uses accent colour for non-zero */}
+                            {/* Points use black or white based on the background and accent nonzero values */}
                             <Val bgColor={color}>
                               <span
                                 style={{
@@ -2409,7 +2406,7 @@ export default function RacePage() {
                                     r.points > 0 ? textOn(color) : subOn(color),
                                 }}
                               >
-                                {r.points > 0 ? r.points : "—"}
+                                {r.points > 0 ? r.points : "N/A"}
                               </span>
                             </Val>
                           </F1Row>
@@ -2534,7 +2531,7 @@ export default function RacePage() {
                                 fontWeight: 700,
                               }}
                             >
-                              {sd?.team || "—"}
+                              {sd?.team || "N/A"}
                             </span>
                           </Val>
                           <Val
@@ -2569,10 +2566,7 @@ export default function RacePage() {
             {/* ── PIT STOPS ── */}
             <PitStopsTab active={tab === "pit-stops"}>
               <div style={card}>
-                <SectionTitle
-                  accent={accent}
-                  sub="Official pit-lane duration when Jolpica provides it; FastF1 values are marked as an approximate fallback."
-                >
+                <SectionTitle accent={accent}>
                   Pit Stop Times
                 </SectionTitle>
                 {enrichedPitStops.length === 0 ? (
@@ -2590,7 +2584,7 @@ export default function RacePage() {
                     <span
                       style={{ fontSize: 11, marginTop: 4, display: "block" }}
                     >
-                      Jolpica processes this 1–2 days after the race
+                      Jolpica processes this one or two days after the race
                     </span>
                   </div>
                 ) : (
@@ -2623,12 +2617,12 @@ export default function RacePage() {
                           : null;
                         return [
                           {
-                            label: "FASTEST PIT-LANE TIME",
+                            label: "FASTEST PIT LANE TIME",
                             val: fastest,
                             color: "#22c55e",
                           },
-                          { label: "AVERAGE PIT-LANE TIME", val: avg, color: C.text },
-                          { label: "SLOWEST PIT-LANE TIME", val: slowest, color: C.red },
+                          { label: "AVERAGE PIT LANE TIME", val: avg, color: C.text },
+                          { label: "SLOWEST PIT LANE TIME", val: slowest, color: C.red },
                         ].map((s) => (
                           <div
                             key={s.label}
@@ -2662,7 +2656,7 @@ export default function RacePage() {
                                 letterSpacing: "-0.02em",
                               }}
                             >
-                              {s.val ? `${s.val.toFixed(3)}s` : "—"}
+                              {s.val ? `${s.val.toFixed(3)}s` : "N/A"}
                             </div>
                             <div
                               style={{
@@ -2681,7 +2675,7 @@ export default function RacePage() {
                     </div>
                     <F1Header
                       cols={PS_COLS}
-                      labels={["Driver", "Team", "Stop No.", "Lap", "Pit-lane time"]}
+                      labels={["Driver", "Team", "Stop No.", "Lap", "Pit lane time"]}
                     />
                     {enrichedPitStops
                       .sort((a, b) => a.lap - b.lap)
@@ -2734,7 +2728,7 @@ export default function RacePage() {
                                   fontWeight: 700,
                                 }}
                               >
-                                {sd?.team || "—"}
+                                {sd?.team || "N/A"}
                               </span>
                             </Val>
                             <Val bgColor={color}>
@@ -2845,7 +2839,7 @@ export default function RacePage() {
                       const sd = sdByNum[n];
                       return (
                         <option key={n} value={n}>
-                          #{n} {sd?.code || "?"} —{" "}
+                          #{n} {sd?.code || "?"}: {" "}
                           {sd?.full_name || `Driver ${n}`}
                         </option>
                       );
@@ -2936,7 +2930,7 @@ export default function RacePage() {
                 <div style={card}>
                   <SectionTitle
                     accent={accent}
-                    sub="CrewAI Strategy Agent · RAG retrieval from Pinecone · Spark-computed features"
+                    sub="CrewAI Strategy Agent · RAG retrieval from Pinecone · Spark computed features"
                   >
                     Strategy Recommendation
                   </SectionTitle>
@@ -3040,7 +3034,7 @@ export default function RacePage() {
                       lineHeight: 1.5,
                     }}
                   >
-                    Martin Brundle-style live commentary from real telemetry
+                    Martin Brundle style live commentary from real telemetry
                     data.
                   </p>
                   <div
@@ -3063,7 +3057,7 @@ export default function RacePage() {
                       const sd = sdByNum[n];
                       return (
                         <option key={n} value={n}>
-                          #{n} {sd?.code || "?"} —{" "}
+                          #{n} {sd?.code || "?"}: {" "}
                           {sd?.full_name || `Driver ${n}`}
                         </option>
                       );

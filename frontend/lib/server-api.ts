@@ -1,4 +1,5 @@
 import "server-only";
+import { getServiceApiKey } from "./service-auth";
 
 const BACKEND = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
 const REPRESENTATION_HEADERS = [
@@ -57,9 +58,13 @@ export async function forwardPublic(path: string): Promise<Response> {
 }
 
 export async function forwardProtected(path: string, request?: Request): Promise<Response> {
-  const serviceKey = process.env.API_SERVICE_KEY;
+  // Use the backend variable name as the primary name so the same secret can be
+  // configured consistently on Render and Vercel. Keep the old name as a
+  // migration fallback for existing deployments.
+  const serviceKey = getServiceApiKey(process.env);
   if (!serviceKey && process.env.NODE_ENV === "production") {
-    return Response.json({ detail: "AI and processing routes are not configured." }, { status: 503 });
+    console.error("Protected API proxy is missing SERVICE_API_KEY.");
+    return Response.json({ detail: "The requested service is temporarily unavailable." }, { status: 503 });
   }
   const headers = new Headers({ "X-API-Key": serviceKey || "" });
   let body: string | undefined;

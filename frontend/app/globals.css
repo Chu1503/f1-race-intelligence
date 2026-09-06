@@ -1,7 +1,7 @@
 @import "tailwindcss";
-/* @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,300;0,400;0,600;0,700;0,900;1,700;1,900&family=Barlow:wght@300;400;500;600&display=swap'); */
 
 :root {
+  --font-readable: "Segoe UI", Arial, sans-serif;
   --red: #e8002d;
   --red-dim: #e8002d18;
   --black: #080808;
@@ -27,9 +27,17 @@
 body {
   background: var(--black);
   color: var(--text);
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-readable);
   -webkit-font-smoothing: antialiased;
   overflow-x: auto;
+}
+
+button,
+input,
+select,
+textarea,
+[style*="Barlow"] {
+  font-family: var(--font-readable) !important;
 }
 
 .api-error {
