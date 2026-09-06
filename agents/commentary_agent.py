@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from crewai import Agent, Task, Crew
 from config import settings
 
-# ── Initialized once at module load — not per request ─────────────────────
+# Initialized once to avoid rebuilding the agent for every request.
 _MODEL = f"anthropic/{settings.CLAUDE_MODEL}"
 
 commentary_agent = Agent(
@@ -24,7 +24,6 @@ commentary_agent = Agent(
     verbose=False,
     allow_delegation=False,
 )
-# ──────────────────────────────────────────────────────────────────────────
 
 
 def generate_lap_commentary(

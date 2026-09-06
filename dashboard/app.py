@@ -26,12 +26,10 @@ DRIVER_NAMES = {
 st.title("🏎️ F1 Race Intelligence System")
 st.caption("Real-time strategy analysis powered by Spark + CrewAI + RAG")
 
-# Sidebar
 st.sidebar.header("Data Source")
 year = st.sidebar.selectbox("Season", [2024, 2023], index=0)
 round_num = st.sidebar.selectbox("Round", list(range(1, 24)), index=0)
 
-# Load data
 @st.cache_data
 def load_race_data(year, round_num):
     path = f"data/spark_output/historical/{year}_round{round_num}"
@@ -47,7 +45,6 @@ if df is None:
 
 df["driver_name"] = df["driver_number"].map(DRIVER_NAMES).fillna(df["driver_number"].astype(str))
 
-# Tabs
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Race Overview", "🔍 Driver Deep Dive", "🤖 AI Strategy", "💬 Commentary"])
 
 with tab1:

@@ -36,3 +36,16 @@ logs/
 # IDE
 .vscode/
 .idea/
+
+# Local coding tools
+.claude/
+.codex/
+.cursor/
+.cursorignore
+AGENTS.md
+CLAUDE.md
+
+# Operating system metadata
+.DS_Store
+desktop.ini
+Thumbs.db

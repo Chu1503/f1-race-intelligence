@@ -44,7 +44,6 @@ class Settings:
     # LLM Model Settings
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "anthropic").lower()
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    # CLAUDE_MODEL = "claude-sonnet-4-6"
     CLAUDE_MODEL = "claude-haiku-4-5-20251001"
     CLAUDE_MAX_TOKENS: int = 4096
 

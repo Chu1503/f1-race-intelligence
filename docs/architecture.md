@@ -46,7 +46,7 @@ OpenF1's `/laps` payload does not contain compound or tyre age. The connector jo
 
 AI, RAG search, and processing endpoints require `X-API-Key`; only Next server routes know the shared key. Per-IP sliding-window rate limits protect each costly route. Production refuses protected calls if the key is missing. `/health` reports dependency configuration without revealing secrets, while `/health/ready` returns 503 when core dependencies are unavailable. The free Render configuration uses `/tmp`; job records, newly downloaded FastF1 files, live snapshots, and dynamically loaded races are therefore ephemeral. Durable historical availability comes from the versioned static frontend artifacts committed to the repository.
 
-Set `SERVICE_API_KEY` on Render and set the identical value as `API_SERVICE_KEY` on Vercel. Set `API_BASE_URL` on Vercel to the Render origin. Historical browser reads use same-origin static files. A non-blocking health request begins waking Render in the background for AI, processing, or a new race. Dynamic reads use the `/api/data/*` proxy; `NEXT_PUBLIC_API_URL` remains a server-side fallback for existing deployments.
+Set the same `SERVICE_API_KEY` value on Render and Vercel. Set `API_BASE_URL` on Vercel to the Render origin. Historical browser reads use same-origin static files. A non-blocking health request begins waking Render in the background for AI, processing, or a new race. Dynamic reads use the `/api/data/*` proxy; `NEXT_PUBLIC_API_URL` remains a server-side fallback for existing deployments.
 
 ## Refreshing the static archive
 

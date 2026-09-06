@@ -540,7 +540,7 @@ def get_race_incidents(year: int, round_number: int):
 def get_lap_positions(year: int, round_number: int):
     """Driver position on every lap. Uses FastF1 if cache available, else derives
     approximate positions from cumulative lap times in parquet."""
-    # ── Try FastF1 first (exact telemetry positions) ──────────────────────────
+    # Prefer exact FastF1 telemetry positions.
     try:
         session = _get_fastf1_session(year, round_number)
         laps = session.laps[["Driver", "DriverNumber", "LapNumber", "Position"]].copy()
@@ -554,7 +554,7 @@ def get_lap_positions(year: int, round_number: int):
     except Exception:
         pass
 
-    # ── Fallback: derive from cumulative lap times in parquet ─────────────────
+    # Fall back to positions derived from cumulative Parquet lap times.
     try:
         df = _load_race_frame(year, round_number)
         df = df[["driver_number", "lap_number", "lap_duration"]].copy()
@@ -705,7 +705,7 @@ def get_pit_stops(year: int, round_number: int):
                 return abbr
         return ""
 
-    # ── Try Jolpica ──────────────────────────────────────────────────────────
+    # Prefer official Jolpica pit stop records.
     try:
         r = requests.get(
             f"https://api.jolpi.ca/ergast/f1/{year}/{round_number}/pitstops.json?limit=100",
@@ -759,7 +759,7 @@ def get_pit_stops(year: int, round_number: int):
     except Exception as e:
         logger.warning(f"Jolpica pit stops error: {e}")
 
-    # ── FastF1 fallback ───────────────────────────────────────────────────────
+    # Fall back to approximate FastF1 pit timing.
     try:
         session = _get_fastf1_session(year, round_number)
         laps = session.laps.copy()

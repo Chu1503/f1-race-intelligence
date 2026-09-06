@@ -13,12 +13,7 @@ import {
   ReferenceLine,
   Legend,
 } from "recharts";
-import {
-  // getTeamLogo,
-  TYRE_COLORS,
-  getTeamColor,
-  type SessionDriver,
-} from "../../../lib/constants";
+import { TYRE_COLORS, getTeamColor, type SessionDriver } from "../../../lib/constants";
 import {
   errorMessage,
   getStrategy,
@@ -28,7 +23,6 @@ import { useRaceData } from "../../../hooks/use-race-data";
 import type { LapPosition, PitStop, RaceResult, TyreStrategy } from "../../../components/race/types";
 import { AiStrategyTab, CommentaryTab, FastestLapsTab, LapChartTab, LapTimesTab, PitStopsTab, ResultsTab, TyreDegradationTab, TyreStrategyTab } from "../../../components/race/tabs/TabPanels";
 
-// ── Tokens ─────────────────────────────────────────────────────────────────
 const C = {
   black: "#080808",
   dark: "#0e0e0e",
@@ -58,8 +52,7 @@ const card: React.CSSProperties = {
   padding: 24,
 };
 
-// ── Perceived-luminance helper ─────────────────────────────────────────────
-// Returns true if bg is dark → use white text; false if light → use black text
+// Relative luminance keeps text readable against dynamic team colours.
 function bgIsDark(hex: string): boolean {
   const h = hex.replace("#", "");
   if (h.length < 6) return true;
@@ -75,20 +68,13 @@ function subOn(bg: string) {
   return bgIsDark(bg) ? "rgba(255,255,255,0.68)" : "rgba(0,0,0,0.55)";
 }
 
-// ── Shared grid strings (header + row MUST be identical) ───────────────────
-// Results:    [driver 2.8fr] [team 1fr] [grid .55fr] [laps .55fr] [time 1fr] [status .9fr] [pts .45fr]
+// Header and row definitions must use the same column strings to stay aligned.
 const R_COLS =
   "minmax(0,2.8fr) minmax(0,1fr) minmax(0,.55fr) minmax(0,.55fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,.45fr)";
-// FastestLap: [driver 2.8fr] [team 1fr] [time 1fr] [lapno .7fr] [tyre .7fr]
 const FL_COLS =
   "minmax(0,2.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.7fr) minmax(0,.7fr)";
-// PitStops:   [driver 2.8fr] [team 1fr] [stopno .8fr] [lap .7fr] [dur 1fr]
 const PS_COLS =
   "minmax(0,2.8fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.7fr) minmax(0,1fr)";
-
-// left black cell is always exactly 60px wide, accounted for in the header by a 60px spacer.
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 function statusLabel(s: string): { label: string; color: string } {
   if (!s || s === "Unknown") return { label: "N/A", color: C.muted };
   if (s === "Finished") return { label: "Finished", color: "#22c55e" };
@@ -100,7 +86,6 @@ function statusLabel(s: string): { label: string; color: string } {
   return { label: `DNF: ${s}`, color: "#f59e0b" };
 }
 
-// ── Small reusable components ──────────────────────────────────────────────
 function AccentBar({ color }: { color?: string }) {
   return (
     <div
@@ -664,9 +649,7 @@ function InfoRow({
   );
 }
 
-// ── F1-style coloured row ──────────────────────────────────────────────────
-// The row is: [60px black left cell] + [coloured right section using CSS grid]
-// IMPORTANT: the header must have the same structure: [60px spacer] + [same grid]
+// F1Row and F1Header share a fixed 60px lead cell and identical grid spacing.
 function F1Row({
   pos,
   rowColor,
@@ -688,7 +671,6 @@ function F1Row({
         minWidth: 0,
       }}
     >
-      {/* Left black position cell, fixed at 60px */}
       <div
         style={{
           width: 60,
@@ -704,7 +686,6 @@ function F1Row({
       >
         {pos}
       </div>
-      {/* Coloured content area */}
       <div
         style={{
           flex: 1,
@@ -725,7 +706,6 @@ function F1Row({
   );
 }
 
-// Header row aligned to F1Row with a 60px spacer, the same grid, and the same padding
 function F1Header({ cols, labels }: { cols: string; labels: string[] }) {
   return (
     <div style={{ display: "flex", marginBottom: 10 }}>
@@ -761,13 +741,11 @@ function F1Header({ cols, labels }: { cols: string; labels: string[] }) {
 }
 
 function DriverName({
-  // logo,
   team,
   full,
   sub,
   bgColor,
 }: {
-  // logo: string | null;
   team: string;
   full: string;
   sub?: string;
@@ -786,35 +764,6 @@ function DriverName({
         overflow: "hidden",
       }}
     >
-      {/* <div
-        style={{
-          width: 48,
-          minWidth: 48,
-          height: 36,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          background: "rgba(0,0,0,0.22)",
-          borderRadius: 3,
-        }}
-      >
-        {logo && (
-          <img
-            src={logo}
-            alt={team}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-            style={{
-              maxWidth: 40,
-              maxHeight: 28,
-              objectFit: "contain",
-              display: "block",
-            }}
-          />
-        )}
-      </div> */}
       <div style={{ minWidth: 0, flex: 1, paddingRight: 8 }}>
         <div
           style={{
@@ -853,7 +802,6 @@ function DriverName({
   );
 }
 
-// Generic cell for coloured rows
 function Val({
   children,
   mono,
@@ -886,7 +834,6 @@ function Val({
   );
 }
 
-// ── Charts ─────────────────────────────────────────────────────────────────
 function TyreStrategyChart({
   strategies,
   sdByNum,
@@ -1153,7 +1100,6 @@ function LapPositionChart({
   );
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────
 export default function RacePage() {
   const params = useParams();
   const router = useRouter();
@@ -1320,12 +1266,11 @@ export default function RacePage() {
   const enrichedPitStops: PitStop[] = pitStops.map(ps => {
     let sd: SessionDriver | undefined;
   
-    // Priority 1: match by three letter driver_code, as used by fastest laps
+    // Prefer stable identifiers before names, which vary between providers.
     if (ps.driver_code) {
       sd = Object.values(sdByNum).find(s => s.code === ps.driver_code.toUpperCase());
     }
   
-    // Priority 2: match by driver_id slug against full names in sdByNum
     if (!sd && ps.driver_id) {
       const slug = ps.driver_id.toLowerCase().replace(/_/g, "");
       sd = Object.values(sdByNum).find(s => {
@@ -1341,12 +1286,10 @@ export default function RacePage() {
       });
     }
   
-    // Priority 3: match by driver_number directly
     if (!sd) {
       sd = sdByNum[ps.driver_number];
     }
   
-    // Priority 4: match driver_id against results by surname
     if (!sd && ps.driver_id) {
       const slug = ps.driver_id.toLowerCase().replace(/_/g, "");
       const mr = results.find(r => {
@@ -1355,7 +1298,6 @@ export default function RacePage() {
         return full === slug || slug.includes(surname) || r.abbreviation.toLowerCase() === ps.driver_id.toLowerCase();
       });
       if (mr) {
-        // Find in sdByNum by abbreviation
         sd = Object.values(sdByNum).find(s => s.code === mr.abbreviation);
       }
     }
@@ -1380,7 +1322,6 @@ export default function RacePage() {
     <div style={{ minHeight: "100vh", background: C.black }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}`}</style>
 
-      {/* ── Header ── */}
       <header
         style={{
           borderBottom: `1px solid ${C.border}`,
@@ -1456,7 +1397,6 @@ export default function RacePage() {
       </header>
 
       <main style={{ maxWidth: 1440, margin: "0 auto", padding: "32px 28px" }}>
-        {/* Loading */}
         {dataLoading && (
           <div
             style={{
@@ -1491,7 +1431,6 @@ export default function RacePage() {
           </div>
         )}
 
-        {/* No data */}
         {!dataLoading && !laps && (
           <div
             style={{
@@ -1544,10 +1483,8 @@ export default function RacePage() {
           </div>
         )}
 
-        {/* ── Race content ── */}
         {!dataLoading && laps && (
           <>
-            {/* Title */}
             <div
               style={{ marginBottom: 36, animation: "slideUp 0.4s ease both" }}
             >
@@ -1655,7 +1592,6 @@ export default function RacePage() {
               </div>
             </div>
 
-            {/* Stat cards */}
             <div className="race-stat-grid"
               style={{
                 display: "grid",
@@ -1700,7 +1636,6 @@ export default function RacePage() {
               />
             </div>
 
-            {/* Driver selector */}
             <div style={{ ...card, marginBottom: 12, padding: "14px 16px" }}>
               <div
                 style={{
@@ -1738,7 +1673,6 @@ export default function RacePage() {
               </div>
             </div>
 
-            {/* Tab bar */}
             <div
               role="tablist"
               aria-label="Race analysis views"
@@ -1773,7 +1707,6 @@ export default function RacePage() {
               ))}
             </div>
 
-            {/* ── LAP TIMES ── */}
             <LapTimesTab active={tab === "laps"}>
               <div style={card}>
                 <SectionTitle
@@ -1932,7 +1865,6 @@ export default function RacePage() {
               </div>
             </LapTimesTab>
 
-            {/* ── LAP CHART ── */}
             <LapChartTab active={tab === "positions"}>
               <div style={card}>
                 <SectionTitle accent={accent}>
@@ -1972,7 +1904,6 @@ export default function RacePage() {
               </div>
             </LapChartTab>
 
-            {/* ── TYRE DEG ── */}
             <TyreDegradationTab active={tab === "deg"}>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 12 }}
@@ -2220,7 +2151,6 @@ export default function RacePage() {
               </div>
             </TyreDegradationTab>
 
-            {/* ── TYRE STRATEGY ── */}
             <TyreStrategyTab active={tab === "tyre-strategy"}>
               <div style={card}>
                 <SectionTitle
@@ -2265,7 +2195,6 @@ export default function RacePage() {
               </div>
             </TyreStrategyTab>
 
-            {/* ── RACE RESULTS ── */}
             <ResultsTab active={tab === "results"}>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 12 }}
@@ -2306,7 +2235,6 @@ export default function RacePage() {
                       {results.map((r, i) => {
                         const sd = sdForResult(r);
                         const color = sd?.color || getTeamColor(r.team || "");
-                        // const logo = getTeamLogo(r.team || "");
                         const s = statusLabel(r.status);
                         const isDNS = s.label === "DNS";
                         const podium = [C.gold, C.silver, C.bronze];
@@ -2335,7 +2263,6 @@ export default function RacePage() {
                             }
                           >
                             <DriverName
-                              // logo={logo}
                               team={r.team}
                               full={r.full_name}
                               sub={r.abbreviation}
@@ -2372,7 +2299,6 @@ export default function RacePage() {
                               <StatusBadge
                                 label={s.label}
                                 color={s.color}
-                                // bgColor={color}
                               />
                               {r.fastest_lap_rank === 1 && (
                                 <span
@@ -2393,7 +2319,6 @@ export default function RacePage() {
                                 </span>
                               )}
                             </div>
-                            {/* Points use black or white based on the background and accent nonzero values */}
                             <Val bgColor={color}>
                               <span
                                 style={{
@@ -2465,7 +2390,6 @@ export default function RacePage() {
               </div>
             </ResultsTab>
 
-            {/* ── FASTEST LAPS ── */}
             <FastestLapsTab active={tab === "fastest-laps"}>
               <div style={card}>
                 <SectionTitle
@@ -2495,7 +2419,6 @@ export default function RacePage() {
                     {fastestLaps.map((fl, i) => {
                       const sd = sdByNum[fl.driver_number];
                       const color = sd?.color || "#888";
-                      // const logo = getTeamLogo(sd?.team || "");
                       return (
                         <F1Row
                           key={i}
@@ -2517,7 +2440,6 @@ export default function RacePage() {
                           }
                         >
                           <DriverName
-                            // logo={logo}
                             team={sd?.team || ""}
                             full={sd?.full_name || fl.driver_code}
                             sub={fl.driver_code}
@@ -2546,13 +2468,11 @@ export default function RacePage() {
                           <Val bgColor={color} mono size={15}>
                             Lap {fl.lap_number}
                           </Val>
-                          {/* Tyre WITHOUT bullet, contrast-aware */}
                           <div
                             style={{ display: "flex", alignItems: "center" }}
                           >
                             <TyreChipContrast
                               compound={fl.tyre_compound}
-                              // bgColor={color}
                             />
                           </div>
                         </F1Row>
@@ -2563,7 +2483,6 @@ export default function RacePage() {
               </div>
             </FastestLapsTab>
 
-            {/* ── PIT STOPS ── */}
             <PitStopsTab active={tab === "pit-stops"}>
               <div style={card}>
                 <SectionTitle accent={accent}>
@@ -2589,7 +2508,6 @@ export default function RacePage() {
                   </div>
                 ) : (
                   <>
-                    {/* Summary cards */}
                     <div
                       style={{
                         display: "grid",
@@ -2682,7 +2600,6 @@ export default function RacePage() {
                       .map((ps, i) => {
                         const sd = ps.sd || sdByNum[ps.driver_number];
                         const color = sd?.color || "#888";
-                        // const logo = getTeamLogo(sd?.team || "");
                         const dur = ps.duration_seconds;
                         const isFastest =
                           fastestStopDur !== null && dur === fastestStopDur;
@@ -2712,7 +2629,6 @@ export default function RacePage() {
                             }
                           >
                             <DriverName
-                              // logo={logo}
                               team={sd?.team || ""}
                               full={
                                 sd?.full_name || ps.driver_code || ps.driver_id
@@ -2792,7 +2708,6 @@ export default function RacePage() {
               </div>
             </PitStopsTab>
 
-            {/* ── AI STRATEGY ── */}
             <AiStrategyTab active={tab === "ai-strategy"}>
               <div className="race-ai-layout"
                 style={{
@@ -3012,7 +2927,6 @@ export default function RacePage() {
               </div>
             </AiStrategyTab>
 
-            {/* ── COMMENTARY ── */}
             <CommentaryTab active={tab === "commentary"}>
               <div className="race-ai-layout"
                 style={{

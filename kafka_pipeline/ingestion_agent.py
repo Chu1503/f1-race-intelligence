@@ -53,12 +53,10 @@ class IngestionAgent:
         logger.info(f"Starting LIVE ingestion for session {session_key}")
         self._setup_topics()
 
-        # Publish session start event
         session = self.openf1.get_session_by_key(session_key)
         if session:
             self.producer.publish_session_event("session_start", session.to_dict())
 
-        # Publish driver roster
         drivers = self.openf1.get_drivers(session_key)
         for driver in drivers:
             self.producer._publish("f1.driver.info", str(driver.driver_number), driver.to_dict())
@@ -67,7 +65,6 @@ class IngestionAgent:
 
         while _running:
             try:
-                # Fetch only new laps since last poll
                 new_laps = self.openf1.get_latest_laps_since(
                     session_key, self._lap_watermarks
                 )
@@ -78,12 +75,10 @@ class IngestionAgent:
                         lap.lap_number, self._lap_watermarks.get(lap.driver_number, 0)
                     )
 
-                # Fetch current positions
                 positions = self.openf1.get_positions(session_key)
                 for pos in positions:
                     self.producer.publish_position(pos)
 
-                # Fetch pit stops
                 pits = self.openf1.get_pit_stops(session_key)
                 for pit in pits:
                     key = (pit.session_key, pit.driver_number, pit.lap_number)
@@ -147,7 +142,6 @@ class IngestionAgent:
                 f"Tyre: {lap.tyre_compound}"
             )
 
-        # Publish all pit stops at the end
         pits = self.fastf1.get_pit_stops(session)
         for pit in pits:
             self.producer.publish_pit_stop(pit)

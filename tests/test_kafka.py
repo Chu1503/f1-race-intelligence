@@ -31,7 +31,6 @@ def test_produce_consume():
     from kafka_pipeline.consumer import F1KafkaConsumer
     from data_ingestion.models import LapData
 
-    # Create a test lap
     test_lap = LapData(
         session_key=9999,
         driver_number=1,
@@ -73,7 +72,6 @@ def test_produce_consume():
         logger.error("FAIL: No message received within timeout")
         return False
 
-    # Verify round-trip data integrity
     msg = received[0]
     assert msg["driver_number"] == 1, "driver_number mismatch"
     assert msg["lap_number"] == 42, "lap_number mismatch"
@@ -90,7 +88,6 @@ def test_replay_to_kafka():
 
     agent = IngestionAgent()
 
-    # Load session and push 5 laps
     from data_ingestion.fastf1_connector import FastF1Connector
     from config import settings
 

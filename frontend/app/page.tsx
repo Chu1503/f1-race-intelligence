@@ -80,39 +80,6 @@ export default function HomePage() {
           width: "100%",
         }}
       >
-        {/* <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "4px 16px",
-            border: `1px solid ${C.red}`,
-            marginBottom: 32,
-            borderRadius: 2,
-          }}
-        >
-          <div
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: C.red,
-              animation: "pulse 2s ease-in-out infinite",
-            }}
-          />
-          <span
-            style={{
-              fontFamily: "'Barlow Condensed', sans-serif",
-              fontSize: 11,
-              color: C.red,
-              letterSpacing: "0.3em",
-              textTransform: "uppercase",
-            }}
-          >
-            Live Race Analysis System
-          </span>
-        </div> */}
-
         <div style={{ marginBottom: 30 }}>
           <div
             style={{
@@ -146,7 +113,6 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* Season cards */}
         {loading ? (
           <div
             style={{
@@ -239,7 +205,6 @@ export default function HomePage() {
                     boxShadow: isHovered ? `0 12px 40px ${color}20` : "none",
                   }}
                 >
-                  {/* Diagonal accent */}
                   <div
                     style={{
                       position: "absolute",
@@ -256,7 +221,6 @@ export default function HomePage() {
                     }}
                   />
 
-                  {/* Speed lines */}
                   <div
                     style={{
                       position: "absolute",
@@ -385,7 +349,6 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Footer */}
       <div
         style={{
           marginTop: "auto",

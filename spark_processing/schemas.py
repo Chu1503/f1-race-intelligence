@@ -1,5 +1,4 @@
 
-# schemas for all Kafka message types.
 from pyspark.sql.types import (
     StructType, StructField,
     IntegerType, FloatType, StringType, BooleanType, TimestampType

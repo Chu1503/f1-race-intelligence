@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from crewai import Agent, Task, Crew
 from config import settings
 
-# ── Initialized once at module load — not per request ─────────────────────
-# crewai 1.x: pass model string directly — LiteLLM handles the Anthropic call,
+# Initialized once to avoid rebuilding the agent for every request.
+# CrewAI 1.x accepts the model string directly; LiteLLM handles the Anthropic call,
 # no sentence-transformers / ONNX pulled in.
 _MODEL = f"anthropic/{settings.CLAUDE_MODEL}"
 
@@ -27,7 +27,6 @@ strategy_agent = Agent(
     verbose=False,
     allow_delegation=False,
 )
-# ──────────────────────────────────────────────────────────────────────────
 
 
 def _fetch_rag_context(rag_query: str, circuit_name: str) -> dict:
@@ -58,7 +57,7 @@ def analyze_driver_situation_detailed(
     delta = lap_delta or 0.0
     laps_to_pit = estimated_laps_to_pit if estimated_laps_to_pit is not None else 999.0
 
-    # ── RAG lookup — 5s hard limit, skipped if slow/unavailable ──────────
+    # RAG must not hold the recommendation beyond its five second budget.
     rag_query = (
         f"{tyre_compound} tyres {tyre_age_laps} laps "
         f"degradation rate {deg_rate:.4f} "
@@ -76,7 +75,6 @@ def analyze_driver_situation_detailed(
         pass
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
-    # ──────────────────────────────────────────────────────────────────────
 
     pit_model_note = (
         f"pit flag active, ~{round(laps_to_pit, 1)} laps window"

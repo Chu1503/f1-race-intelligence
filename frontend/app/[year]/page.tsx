@@ -401,18 +401,6 @@ export default function SeasonPage() {
                               display: "block",
                             }}
                           />
-                          {/* {isLoaded && (
-                            <div
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: "50%",
-                                background: accentColor,
-                                boxShadow: `0 0 8px ${accentColor}`,
-                                flexShrink: 0,
-                              }}
-                            />
-                          )} */}
                         </div>
                       </div>
 
