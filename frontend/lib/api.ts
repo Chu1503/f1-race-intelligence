@@ -1,4 +1,8 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Keep browser requests same-origin. The Next route forwards them to Render (or
+// localhost in development), avoiding CORS/ad-blocker failures and giving a
+// sleeping backend enough time to start.
+const API = "/api/data";
+const DEFAULT_TIMEOUT_MS = process.env.NODE_ENV === "production" ? 100_000 : 8_000;
 
 export class ApiError extends Error {
   constructor(
@@ -11,13 +15,15 @@ export class ApiError extends Error {
   }
 }
 
-async function fetchWithRetry(url: string, options?: RequestInit, attempts = 2, timeoutMs = 8_000): Promise<Response> {
+async function fetchWithRetry(url: string, options?: RequestInit, attempts = 3, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(url, { ...options, signal: controller.signal });
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      if (![502, 503, 504].includes(response.status) || attempt === attempts - 1) return response;
+      lastError = new ApiError(`The data service is starting (${response.status}).`, response.status);
     } catch (error) {
       lastError = error;
       if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
@@ -31,7 +37,7 @@ async function fetchWithRetry(url: string, options?: RequestInit, attempts = 2, 
   throw new ApiError("The data service is unreachable. Please try again.", 0);
 }
 
-async function requestJson<T>(url: string, options?: RequestInit, attempts = 2, timeoutMs = 8_000): Promise<T> {
+async function requestJson<T>(url: string, options?: RequestInit, attempts = 3, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const response = await fetchWithRetry(url, options, attempts, timeoutMs);
   const body = await response.json().catch(() => ({})) as { detail?: string; message?: string };
   if (!response.ok) {
@@ -59,10 +65,6 @@ export interface ProcessingJob {
   rows_written?: number | null;
 }
 
-export async function pingHealth(): Promise<boolean> {
-  try { return (await fetchWithRetry(`${API}/health`, undefined, 1, 10_000)).ok; }
-  catch { return false; }
-}
 export const getAvailableRaces = () => requestJson<{ races: AvailableRace[] }>(`${API}/available-races`);
 export const getSeasons = () => requestJson<{ seasons: number[] }>(`${API}/seasons`);
 export const getCalendar = (year: number) => requestJson<{ year: number; races: import("./constants").CalendarRace[] }>(`${API}/calendar/${year}`);

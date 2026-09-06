@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Barlow, Barlow_Condensed } from "next/font/google";
+import ServiceWorkerCleanup from "../components/ServiceWorkerCleanup";
 
 const barlow = Barlow({
   subsets: ["latin"],
@@ -36,6 +37,7 @@ export default function RootLayout({
           position: "relative",
         }}
       >
+        <ServiceWorkerCleanup />
         <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
       </body>
     </html>

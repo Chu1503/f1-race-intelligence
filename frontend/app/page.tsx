@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { errorMessage, getSeasons, getAvailableRaces, pingHealth } from "../lib/api";
+import { errorMessage, getSeasons, getAvailableRaces } from "../lib/api";
 
 const C = {
   black: "#080808",
@@ -23,44 +23,34 @@ export default function HomePage() {
   const [hovered, setHovered] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [waking, setWaking] = useState(false);
-  const [wakeMsg, setWakeMsg] = useState("");
+  const [loadingMessage, setLoadingMessage] = useState("Loading seasons…");
 
   useEffect(() => {
-    Promise.all([getSeasons(), getAvailableRaces()]).then(([s, a]) => {
-      setSeasons(s.seasons);
-      setAvailable(a.races);
-      setLoading(false);
-    }).catch((reason) => { setError(errorMessage(reason)); setLoading(false); });
+    let cancelled = false;
+    const load = async () => {
+      let attempt = 0;
+      while (!cancelled) {
+        attempt += 1;
+        try {
+          const [s, a] = await Promise.all([getSeasons(), getAvailableRaces()]);
+          if (cancelled) return;
+          setSeasons(s.seasons);
+          setAvailable(a.races);
+          setError("");
+          setLoading(false);
+          return;
+        } catch (reason) {
+          if (cancelled) return;
+          setError(errorMessage(reason));
+          setLoading(false);
+          setLoadingMessage(`Connecting to the data service… retry ${attempt}`);
+          await new Promise((resolve) => setTimeout(resolve, Math.min(10_000, attempt * 2_000)));
+        }
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, []);
-
-  const handleWakeUp = async () => {
-    setWaking(true);
-    setWakeMsg("Sending wake-up ping…");
-    let alive = false;
-    const started = Date.now();
-    while (Date.now() - started < 90_000) {
-      alive = await pingHealth();
-      if (alive) break;
-      setWakeMsg(`Server is starting up… (${Math.round((Date.now() - started) / 1000)}s)`);
-      await new Promise((r) => setTimeout(r, 5000));
-    }
-    if (!alive) {
-      setWakeMsg("Server didn't respond after 90s. Try refreshing.");
-      setWaking(false);
-      return;
-    }
-    setWakeMsg("Server is up! Loading data…");
-    try {
-      const [s, a] = await Promise.all([getSeasons(), getAvailableRaces()]);
-      setSeasons(s.seasons);
-      setAvailable(a.races);
-      setError("");
-    } catch (reason) {
-      setWakeMsg(errorMessage(reason));
-    }
-    setWaking(false);
-  };
 
   const racesForYear = (y: number) =>
     available.filter((r) => r.year === y).length;
@@ -240,7 +230,7 @@ export default function HomePage() {
             >
               ⟳
             </span>
-            Loading seasons…
+            {loadingMessage}
           </div>
         ) : error ? (
           <div
@@ -274,50 +264,9 @@ export default function HomePage() {
             >
               Data service unavailable
             </div>
-            <p style={{ color: C.text2, fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
-              {error} You can retry the health check below.
+            <p style={{ color: C.text2, fontSize: 13, lineHeight: 1.6, marginBottom: 0 }}>
+              {error} The connection will retry automatically.
             </p>
-            {wakeMsg && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: C.muted,
-                  marginBottom: 16,
-                  fontFamily: "'Barlow Condensed', sans-serif",
-                  letterSpacing: "0.08em",
-                }}
-              >
-                {wakeMsg}
-              </div>
-            )}
-            <button
-              onClick={handleWakeUp}
-              disabled={waking}
-              style={{
-                background: waking ? "transparent" : C.red,
-                border: `1px solid ${C.red}`,
-                color: "#fff",
-                padding: "10px 24px",
-                borderRadius: 3,
-                fontFamily: "'Barlow Condensed', sans-serif",
-                fontWeight: 700,
-                fontSize: 13,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                cursor: waking ? "not-allowed" : "pointer",
-                opacity: waking ? 0.6 : 1,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              {waking && (
-                <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>
-                  ⟳
-                </span>
-              )}
-              {waking ? "Waking up…" : "Wake up server"}
-            </button>
           </div>
         ) : (
           <div

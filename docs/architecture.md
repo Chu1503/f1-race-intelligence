@@ -46,4 +46,6 @@ OpenF1's `/laps` payload does not contain compound or tyre age. The connector jo
 
 AI, RAG search, and processing endpoints require `X-API-Key`; only Next server routes know the shared key. Per-IP sliding-window rate limits protect each costly route. Production refuses protected calls if the key is missing. `/health` reports dependency configuration without revealing secrets, while `/health/ready` returns 503 when core dependencies are unavailable. Render mounts `/var/data` so job records, FastF1 cache, live snapshots, and dynamically loaded races survive restarts.
 
-Set `SERVICE_API_KEY` on Render and set the identical value as `API_SERVICE_KEY` on Vercel. Set `API_BASE_URL` on Vercel to the Render origin; `NEXT_PUBLIC_API_URL` remains the public read API origin.
+Set `SERVICE_API_KEY` on Render and set the identical value as `API_SERVICE_KEY` on Vercel. Set `API_BASE_URL` on Vercel to the Render origin. Browser data requests use the same-origin `/api/data/*` proxy, which avoids cross-origin blocking and lets the Vercel server wait for a sleeping Render instance to start. `NEXT_PUBLIC_API_URL` remains a server-side fallback for existing deployments.
+
+For local development, run the FastAPI service on port `8100` and Next.js on port `3000`. Ports `8000` and `8001` are intentionally not assumed because they are occupied by other local services on the development machine. The frontend's `.env.local` routes its server-side proxy to `http://localhost:8100`.
